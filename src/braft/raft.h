@@ -50,6 +50,7 @@ const PeerId ANY_PEER(butil::EndPoint(butil::IP_ANY, 0), 0);
 
 // Raft-specific closure which encloses a butil::Status to report if the
 // operation was successful.
+// Closure 就是一个简单的 callback 接口， 提供的大部分方法都是异步的回调模式，结果通过此接口通知：
 class Closure : public google::protobuf::Closure {
 public:
     butil::Status& status() { return _st; }
@@ -104,6 +105,16 @@ inline std::ostream& operator<<(std::ostream& os, const Error& e) {
     return os;
 }
 
+/*
+    Task 是用户使用 raft 最核心的类之一，用于向一个 raft 复制分组提交一个任务，这个任务提交到 leader，并复制到其他 follower 节点， Task 包括：
+        butil::IOBuf* data 任务的数据，用户应当将要复制的业务数据通过一定序列化方式序列化成一个 ByteBuffer，放到 task 里。
+
+        long expected_term = -1 任务提交时预期的 leader term，如果不提供(也就是默认值 -1 )，在任务应用到状态机之前不会检查 leader 是否发生了变更，
+                            如果提供了（从状态机回调中获取，参见下文），那么在将任务应用到状态机之前，会检查 term 是否匹配，如果不匹配将拒绝该任务。
+
+        Closure* done 任务的回调，在任务完成的时候通知此对象，无论成功还是失败。这个 closure 将在 StateMachine#onApply(iterator) 方法应用到状态机的时候，
+                            可以拿到并调用，一般用于客户端应答的返回。
+*/
 // Basic message structure of libraft
 struct Task {
     Task() : data(NULL), done(NULL), expected_term(-1) {}
@@ -193,6 +204,7 @@ friend class FSMCaller;
 // NOTE: All the interfaces are not guaranteed to be thread safe and they are 
 // called sequentially, saying that every single operation will block all the 
 // following ones.
+//注意：所有的接口都不能保证是线程安全的，它们是按顺序调用的，每一个操作都会阻塞下面的所有操作。
 class StateMachine {
 public:
     virtual ~StateMachine();
@@ -208,6 +220,10 @@ public:
     // tasks through |iter| have been successfully applied. And if you didn't
     // apply all the the given tasks, we would regard this as a critical error
     // and report a error whose type is ERROR_TYPE_STATE_MACHINE.
+    /*最核心的方法，应用任务列表到状态机，任务将按照提交顺序应用。
+        请注意，当这个方法返回的时候，我们就认为这一批任务都已经成功应用到状态机上，如果你没有完全应用（比如错误、异常），
+        将会被当做一个 critical 级别的错误，报告给状态机的 onError 方法，错误类型为 ERROR_TYPE_STATE_MACHINE
+    */
     virtual void on_apply(::braft::Iterator& iter) = 0;
 
     // Invoked once when the raft node was shut down.
@@ -230,15 +246,22 @@ public:
 
     // Invoked when the belonging node becomes the leader of the group at |term|
     // Default: Do nothing
+    
     virtual void on_leader_start(int64_t term);
 
     // Invoked when this node steps down from the leader of the replication
     // group and |status| describes detailed information
+    // 当前状态机所属的 raft 节点失去 leader 资格时调用，
+    // status 字段描述了详细的原因，比如主动转移 leadership、重新发生选举等
     virtual void on_leader_stop(const butil::Status& status);
 
     // on_error is called when a critical error was encountered, after this
     // point, no any further modification is allowed to applied to this node
     // until the error is fixed and this node restarts.
+    /* 当 critical 错误发生的时候，会调用此方法，braft::Error 包含了 status 等详细的错误信息；
+        当这个方法被调用后，将不允许新的任务应用到状态机，直到错误被修复并且节点被重启。因此对于任何在开发阶段发现的错误，
+        都应当及时做修正，如果是 raft 的问题，请及时报告。
+    */
     virtual void on_error(const ::braft::Error& e);
 
     // Invoked when a configuration has been committed to the group
@@ -373,9 +396,7 @@ struct PeerStatus {
 };
 
 // Status of Node
-class NodeStatus {
-friend class NodeImpl;
-public:
+struct NodeStatus {
     typedef std::map<PeerId, PeerStatus> PeerStatusMap;
 
     NodeStatus()
@@ -433,11 +454,58 @@ public:
     PeerStatusMap unstable_followers;
 };
 
+// State of a lease. Following is a typical lease state change diagram:
+// 
+// event:                 become leader                 become follower
+//                        ^           on leader start   ^   on leader stop
+//                        |           ^                 |   ^
+// time:        ----------|-----------|-----------------|---|-------
+// lease state:   EXPIRED | NOT_READY |      VALID      |  EXPIRED  
+// 
+enum LeaseState {
+    // Lease is disabled, this state will only be returned when
+    // |raft_enable_leader_lease == false|.
+    LEASE_DISABLED = 1,
+
+    // Lease is expired, this node is not leader any more.
+    LEASE_EXPIRED = 2,
+
+    // This node is leader, but we are not sure the data is up to date. This state
+    // continue until |on_leader_start| or the leader step down.
+    LEASE_NOT_READY = 3,
+
+    // Lease is valid.
+    LEASE_VALID = 4,
+};
+
+// Status of a leader lease.
+struct LeaderLeaseStatus {
+    LeaderLeaseStatus()
+        : state(LEASE_DISABLED), term(0), lease_epoch(0)
+    {}
+
+    LeaseState state;
+
+    // These followering fields are only meaningful when |state == LEASE_VALID|.
+    
+    // The term of this lease
+    int64_t term;
+
+    // A specific term may have more than one lease, when transfer leader timeout
+    // happen. Lease epoch will be guranteed to be monotinically increase, in the
+    // life cycle of a node.
+    int64_t lease_epoch;
+};
+
 struct NodeOptions {
     // A follower would become a candidate if it doesn't receive any message 
     // from the leader in |election_timeout_ms| milliseconds
     // Default: 1000 (1s)
     int election_timeout_ms; //follower to candidate timeout
+
+    // Max clock drift time. It will be used to keep the safety of leader lease.
+    // Default: 1000 (1s)
+    int max_clock_drift_ms;
 
     // A snapshot saving would be triggered every |snapshot_interval_s| seconds
     // if this was reset as a positive number
@@ -461,6 +529,11 @@ struct NodeOptions {
     // Default: A empty group
     Configuration initial_conf;
 
+    // Run the user callbacks and user closures in pthread rather than bthread
+    // 
+    // Default: false
+    bool usercode_in_pthread;
+
     // The specific StateMachine implemented your business logic, which must be
     // a valid instance.
     StateMachine* fsm;
@@ -471,27 +544,45 @@ struct NodeOptions {
     // Default: false
     bool node_owns_fsm;
 
-    // If |node_owns_log_storage| is true. |log_storage| would be destroyed when the backing
-    // Node is no longer referenced.
-    //
-    // Default: true
-    bool node_owns_log_storage;
-
     // The specific LogStorage implemented at the bussiness layer, which should be a valid
     // instance, otherwise use SegmentLogStorage by default.
     //
     // Default: null
     LogStorage* log_storage;
 
-    // Run the user callbacks and user closures in pthread rather than bthread
-    // 
-    // Default: false
-    bool usercode_in_pthread;
+    // If |node_owns_log_storage| is true. |log_storage| would be destroyed when
+    // the backing Node is no longer referenced.
+    //
+    // Default: true
+    bool node_owns_log_storage;
 
     // Describe a specific LogStorage in format ${type}://${parameters}
+    // It's valid iff |log_storage| is null
     std::string log_uri;
 
     // Describe a specific RaftMetaStorage in format ${type}://${parameters}
+    // Three types are provided up till now:
+    // 1. type=local
+    //     FileBasedSingleMetaStorage(old name is LocalRaftMetaStorage) will be
+    //     used, which is based on protobuf file and manages stable meta of
+    //     only one Node
+    //     typical format: local://${node_path}
+    // 2. type=local-merged
+    //     KVBasedMergedMetaStorage will be used, whose under layer is based
+    //     on KV storage and manages a batch of Nodes one the same disk. It's 
+    //     designed to solve performance problems caused by lots of small
+    //     synchronous IO during leader electing, when there are huge number of
+    //     Nodes in Multi-raft situation.
+    //     typical format: local-merged://${disk_path}
+    // 3. type=local-mixed
+    //     MixedMetaStorage will be used, which will double write the above
+    //     two types of meta storages when upgrade an downgrade.
+    //     typical format:
+    //     local-mixed://merged_path=${disk_path}&&single_path=${node_path}
+    // 
+    // Upgrade and Downgrade steps:
+    //     upgrade from Single to Merged: local -> mixed -> merged
+    //     downgrade from Merged to Single: merged -> mixed -> local
     std::string raft_meta_uri;
 
     // Describe a specific SnapshotStorage in format ${type}://${parameters}
@@ -507,7 +598,7 @@ struct NodeOptions {
     // Default: NULL
     scoped_refptr<FileSystemAdaptor>* snapshot_file_system_adaptor;    
     
-    // If non-null, we will pass this throughput_snapshot_throttle to SnapshotExecutor
+    // If non-null, we will pass this snapshot_throttle to SnapshotExecutor
     // Default: NULL
     scoped_refptr<SnapshotThrottle>* snapshot_throttle;
 
@@ -521,13 +612,14 @@ struct NodeOptions {
 
 inline NodeOptions::NodeOptions() 
     : election_timeout_ms(1000)
+    , max_clock_drift_ms(1000)
     , snapshot_interval_s(3600)
     , catchup_margin(1000)
+    , usercode_in_pthread(false)
     , fsm(NULL)
     , node_owns_fsm(false)
-    , node_owns_log_storage(true)
     , log_storage(NULL)
-    , usercode_in_pthread(false)
+    , node_owns_log_storage(true)
     , filter_before_copy_remote(false)
     , snapshot_file_system_adaptor(NULL)
     , snapshot_throttle(NULL)
@@ -537,6 +629,10 @@ inline NodeOptions::NodeOptions()
 class NodeImpl;
 class Node {
 public:
+    /*  一个Node代表了一个RAFT实例， Node的ID由两个部分组成:
+        GroupId: 为一个string, 表示这个复制组的ID.
+        PeerId, 结构是一个EndPoint表示对外服务的端口, 外加一个index(默认为0). 其中index的作用是让不同的副本能运行在同一个进程内, 在下面几个场景中，这个值不能忽略:
+    */
     Node(const GroupId& group_id, const PeerId& peer_id);
     virtual ~Node();
 
@@ -548,6 +644,18 @@ public:
 
     // Return true if this is the leader of the belonging group
     bool is_leader();
+
+    // Return true if this is the leader, and leader lease is valid. It's always
+    // false when |raft_enable_leader_lease == false|.
+    // In the follwing situations, the returned true is unbeleivable:
+    //    -  Not all nodes in the raft group set |raft_enable_leader_lease| to true,
+    //       and tranfer leader/vote interfaces are used;
+    //    -  In the raft group, the value of |election_timeout_ms| in one node is larger
+    //       than |election_timeout_ms + max_clock_drift_ms| in another peer.
+    bool is_leader_lease_valid();
+
+    // Get leader lease status for more complex checking
+    void get_leader_lease_status(LeaderLeaseStatus* status);
 
     // init node
     int init(const NodeOptions& options);
@@ -607,10 +715,31 @@ public:
     // user trigger vote
     // reset election_timeout, suggest some peer to become the leader in a
     // higher probability
-    void vote(int election_timeout);
+    butil::Status vote(int election_timeout);
 
-    // reset the election_timeout for the very node
-    void reset_election_timeout_ms(int election_timeout_ms);
+    // Reset the |election_timeout_ms| for the very node, the |max_clock_drift_ms|
+    // is also adjusted to keep the sum of |election_timeout_ms| and |the max_clock_drift_ms|
+    // unchanged.
+    butil::Status reset_election_timeout_ms(int election_timeout_ms);
+
+    // Forcely reset |election_timeout_ms| and |max_clock_drift_ms|. It may break
+    // leader lease safety, should be careful.
+    // Following are suggestions for you to change |election_timeout_ms| safely.
+    // 1. Three steps to safely upgrade |election_timeout_ms| to a larger one:
+    //     - Enlarge |max_clock_drift_ms| in all peers to make sure
+    //       |old election_timeout_ms + new max_clock_drift_ms| larger than
+    //       |new election_timeout_ms + old max_clock_drift_ms|.
+    //     - Wait at least |old election_timeout_ms + new max_clock_drift_ms| times to make
+    //       sure all previous elections complete.
+    //     - Upgrade |election_timeout_ms| to new one, meanwhiles |max_clock_drift_ms|
+    //       can set back to the old value.
+    // 2. Three steps to safely upgrade |election_timeout_ms| to a smaller one:
+    //     - Adjust |election_timeout_ms| and |max_clock_drift_ms| at the same time,
+    //       to make the sum of |election_timeout_ms + max_clock_drift_ms| unchanged.
+    //     - Wait at least |election_timeout_ms + max_clock_drift_ms| times to make
+    //       sure all previous elections complete.
+    //     - Upgrade |max_clock_drift_ms| back to the old value.
+    void reset_election_timeout_ms(int election_timeout_ms, int max_clock_drift_ms);
 
     // Try transferring leadership to |peer|.
     // If peer is ANY_PEER, a proper follower will be chosen as the leader for
@@ -635,7 +764,7 @@ public:
 
     // Make this node enter readonly mode.
     // Readonly mode should only be used to protect the system in some extreme cases.
-    // For exampe, in a storage system, too many write requests flood into the system
+    // For example, in a storage system, too many write requests flood into the system
     // unexpectly, and the system is in the danger of exhaust capacity. There's not enough
     // time to add new machines, and wait for capacity balance. Once many disks become
     // full, quorum dead happen to raft groups. One choice in this example is readonly
@@ -717,6 +846,26 @@ int bootstrap(const BootstrapOptions& options);
 int add_service(brpc::Server* server, const butil::EndPoint& listen_addr);
 int add_service(brpc::Server* server, int port);
 int add_service(brpc::Server* server, const char* listen_ip_and_port);
+
+// GC
+struct GCOptions {
+    // Versioned-groupid of this raft instance. 
+    // Version is necessary because instance with the same groupid may be created 
+    // again very soon after destroyed.
+    VersionedGroupId vgid;
+    std::string log_uri;
+    std::string raft_meta_uri;
+    std::string snapshot_uri;
+};
+
+// TODO What if a disk is dropped and added again without released from 
+// global_mss_manager? It seems ok because all the instance on that disk would
+// be destroyed before dropping the disk itself, so there would be no garbage. 
+// 
+// GC the data of a raft instance when destroying the instance by some reason.
+//
+// Returns 0 on success, -1 otherwise.
+int gc_raft_data(const GCOptions& gc_options);
 
 }  //  namespace braft
 

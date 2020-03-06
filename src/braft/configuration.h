@@ -31,10 +31,18 @@
 namespace braft {
 
 typedef std::string GroupId;
+// GroupId with version, format: {group_id}_{index}
+typedef std::string VersionedGroupId;
 
 // Represent a participant in a replicating group.
+/*
+    PeerId 表示一个 raft 协议的参与者（leader/follower/candidate etc.)， 
+    它由三元素组成： ip:port:index， IP 就是节点的 IP， port 就是端口， 
+        index 表示同一个端口的序列号，目前没有用到，总被认为是 0。
+    预留此字段是为了支持同一个端口启动不同的 raft 节点，通过 index 区分。
+*/
 struct PeerId {
-    butil::EndPoint addr; // ip+port.
+    butil::EndPoint addr; // ip+port. 表示一个服务地址，包括 IP 和端口
     int idx; // idx in same addr, default 0
 
     PeerId() : idx(0) {}
@@ -54,6 +62,7 @@ struct PeerId {
         return (addr.ip == butil::IP_ANY && addr.port == 0 && idx == 0);
     }
 
+    //可以从字符串解析出 PeerId
     int parse(const std::string& str) {
         reset();
         char ip_str[64];
@@ -132,7 +141,17 @@ inline std::string NodeId::to_string() const {
     return oss.str();
 }
 
-// A set of peers.
+// A set of peers. Configuration 表示一个 raft group 配置，也就是节点列表。
+/*
+    PeerId peer1 = ...
+    PeerId peer2 = ...
+    PeerId peer3 = ...
+    // 由 3 个节点组成的 raft group
+    Configuration* conf = new Configuration();
+    conf->add_peer(peer1);
+    conf->add_peer(peer2);
+    conf->add_peer(peer3);
+*/
 class Configuration {
 public:
     typedef std::set<PeerId>::const_iterator const_iterator;

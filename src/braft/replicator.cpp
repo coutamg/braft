@@ -49,6 +49,9 @@ DEFINE_int32(raft_retry_replicate_interval_ms, 1000,
 BRPC_VALIDATE_GFLAG(raft_retry_replicate_interval_ms,
                     brpc::PositiveInteger);
 
+DECLARE_int64(raft_append_entry_high_lat_us);
+DECLARE_bool(raft_trace_append_entry_latency);
+
 static bvar::LatencyRecorder g_send_entries_latency("raft_send_entries");
 static bvar::LatencyRecorder g_normalized_send_entries_latency(
              "raft_send_entries_normalized");
@@ -418,7 +421,7 @@ void Replicator::_on_rpc_returned(ReplicatorId id, brpc::Controller* cntl,
             r->_reset_next_index();
 
             NodeImpl *node_impl = r->_options.node;
-            // Acquire a reference of Node here in case that Node is detroyed
+            // Acquire a reference of Node here in case that Node is destroyed
             // after _notify_on_caught_up.
             node_impl->AddRef();
             r->_notify_on_caught_up(EPERM, true);
@@ -450,7 +453,7 @@ void Replicator::_on_rpc_returned(ReplicatorId id, brpc::Controller* cntl,
             // decrease _last_log_at_peer by one to test the right index to keep
             if (BAIDU_LIKELY(r->_next_index > 1)) {
                 BRAFT_VLOG << "Group " << r->_options.group_id 
-                           << " log_index=" << r->_next_index << " dismatch";
+                           << " log_index=" << r->_next_index << " mismatch";
                 --r->_next_index;
             } else {
                 LOG(ERROR) << "Group " << r->_options.group_id 
@@ -470,7 +473,7 @@ void Replicator::_on_rpc_returned(ReplicatorId id, brpc::Controller* cntl,
     if (response->term() != r->_options.term) {
         LOG(ERROR) << "Group " << r->_options.group_id
                    << " fail, response term " << response->term()
-                   << " dismatch, expect term " << r->_options.term;
+                   << " mismatch, expect term " << r->_options.term;
         r->_reset_next_index();
         CHECK_EQ(0, bthread_id_unlock(r->_id)) << "Fail to unlock " << r->_id;
         return;
@@ -489,6 +492,18 @@ void Replicator::_on_rpc_returned(ReplicatorId id, brpc::Controller* cntl,
         r->_options.ballot_box->commit_at(
                 min_flying_index, rpc_last_log_index,
                 r->_options.peer_id);
+        int64_t rpc_latency_us = cntl->latency_us();
+        if (FLAGS_raft_trace_append_entry_latency && 
+            rpc_latency_us > FLAGS_raft_append_entry_high_lat_us) {
+            LOG(WARNING) << "append entry rpc latency us " << rpc_latency_us
+                         << " greater than " 
+                         << FLAGS_raft_append_entry_high_lat_us
+                         << " Group " << r->_options.group_id
+                         << " to peer  " << r->_options.peer_id
+                         << " request entry size " << entries_size
+                         << " request data size " 
+                         <<  cntl->request_attachment().size();
+        }
         g_send_entries_latency << cntl->latency_us();
         if (cntl->request_attachment().size() > 0) {
             g_normalized_send_entries_latency << 
@@ -705,7 +720,7 @@ int Replicator::_continue_sending(void* arg, int error_code) {
         return -1;
     }
     if (error_code == ETIMEDOUT) {
-        // Replication is in progress when block timedout, no need to start again
+        // Replication is in progress when block timeout, no need to start again
         // this case can happen when 
         //     1. pipeline is enabled and 
         //     2. disable readonly mode triggers another replication
@@ -723,8 +738,8 @@ int Replicator::_continue_sending(void* arg, int error_code) {
         r->_wait_id = 0;
         r->_send_entries();
     } else if (r->_is_waiter_canceled) {
-        // The replicator is checking corrent next index by sending empty entries or 
-        // install snapshoting now. Althrough the resigtered waiter will be canceled
+        // The replicator is checking current next index by sending empty entries or
+        // install snapshot now. Although the registered waiter will be canceled
         // before the operations, there is still a little chance that LogManger already
         // waked up the waiter, and _continue_sending is waiting to execute.
         BRAFT_VLOG << "Group " << r->_options.group_id
@@ -771,7 +786,7 @@ void Replicator::_install_snapshot() {
         return _block(butil::gettimeofday_us(), EBUSY);
     }
     
-    // pre-set replictor state to INSTALLING_SNAPSHOT, so replicator could be
+    // pre-set replicator state to INSTALLING_SNAPSHOT, so replicator could be
     // blocked if something is wrong, such as throttled for a period of time 
     _st.st = INSTALLING_SNAPSHOT;
 
