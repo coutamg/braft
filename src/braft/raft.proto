@@ -1,0 +1,100 @@
+syntax="proto2";
+
+import "braft/enum.proto";
+
+package braft;
+option cc_generic_services = true;
+
+// data store in baidu-rpc's attachment
+message EntryMeta {
+    required int64 term = 1;
+    required EntryType type = 2;
+    repeated string peers = 3;
+    optional int64 data_len = 4;
+    // Don't change field id of `old_peers' in the consideration of backward
+    // compatibility
+    repeated string old_peers = 5;
+};
+
+message RequestVoteRequest {
+    required string group_id = 1;
+    required string server_id = 2;
+    required string peer_id = 3;
+    //上面三项决定请求选票的候选人的 Id ，raft中的candidateId
+
+    required int64 term = 4;//候选人的任期号
+    required int64 last_log_term = 5;//候选人最后日志条目的任期号
+    required int64 last_log_index = 6;//候选人的最后日志条目的索引值
+};
+
+message RequestVoteResponse {
+    required int64 term = 1;//当前任期号，以便于候选人去更新自己的任期号
+    required bool granted = 2;//候选人赢得了此张选票时为真
+};
+
+//由领导人负责调用来复制日志指令；也会用作heartbeat
+message AppendEntriesRequest {
+    required string group_id = 1;
+    required string server_id = 2;
+    required string peer_id = 3;
+    //上面三项决定领导人的 Id，以便于跟随者重定向请求，raft中的leaderId
+
+    required int64 term = 4;//领导人的任期号
+    required int64 prev_log_term = 5;//prevLogIndex 条目的任期号
+    required int64 prev_log_index = 6;//新的日志条目紧随之前的索引值
+    repeated EntryMeta entries = 7;//准备存储的日志条目（表示心跳时为空；一次性发送多个是为了提高效率）
+    required int64 committed_index = 8;//领导人已经提交的日志的索引值
+};
+
+message AppendEntriesResponse {
+    required int64 term = 1; //当前的任期号，用于领导人去更新自己
+    required bool success = 2; //跟随者包含了匹配上 prevLogIndex 和 prevLogTerm 的日志时为真
+    optional int64 last_log_index = 3;
+    optional bool readonly = 4;
+};
+
+message SnapshotMeta {
+    required int64 last_included_index = 1;
+    required int64 last_included_term = 2;
+    repeated string peers = 3;
+    repeated string old_peers = 4;
+}
+
+message InstallSnapshotRequest {
+    required string group_id = 1;
+    required string server_id = 2;
+    required string peer_id = 3;
+    required int64 term = 4;
+    required SnapshotMeta meta = 5;
+    required string uri = 6;
+};
+
+message InstallSnapshotResponse {
+    required int64 term = 1;
+    required bool success = 2;
+};
+
+message TimeoutNowRequest {
+    required string group_id = 1;
+    required string server_id = 2;
+    required string peer_id = 3;
+    required int64 term = 4;
+}
+
+message TimeoutNowResponse {
+    required int64 term = 1;
+    required bool success = 2;
+}
+
+service RaftService {
+    rpc pre_vote(RequestVoteRequest) returns (RequestVoteResponse);
+
+    rpc request_vote(RequestVoteRequest) returns (RequestVoteResponse);
+
+    rpc append_entries(AppendEntriesRequest) returns (AppendEntriesResponse);
+
+    rpc install_snapshot(InstallSnapshotRequest) returns (InstallSnapshotResponse);
+
+    rpc timeout_now(TimeoutNowRequest) returns (TimeoutNowResponse);
+};
+
