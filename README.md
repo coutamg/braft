@@ -1,3 +1,5 @@
+尝试阅读braft源码，促使更加了解raft
+
 [![Build Status](https://travis-ci.org/brpc/braft.svg?branch=master)](https://travis-ci.org/brpc/braft)
 
 ---
