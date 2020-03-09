@@ -72,6 +72,11 @@ public:
     }
 
     // Starts this node
+    /*  1. 实现并创建状态机实例
+        2. 创建并设置好 NodeOptions 实例，指定存储路径，如果是空白启动，指定初始节点列表配置。
+        3. 创建 Node 实例，并使用 NodeOptions 初始化。
+        4. 创建并启动 RpcServer ，提供节点之间的通讯服务。
+    */
     int start() {
         butil::EndPoint addr(butil::my_ip(), FLAGS_port);
         braft::NodeOptions node_options;
@@ -88,8 +93,8 @@ public:
         node_options.raft_meta_uri = prefix + "/raft_meta";
         node_options.snapshot_uri = prefix + "/snapshot";
         node_options.disable_cli = FLAGS_disable_cli;
-        braft::Node* node = new braft::Node(FLAGS_group, braft::PeerId(addr));
-        if (node->init(node_options) != 0) {
+        braft::Node* node = new braft::Node(FLAGS_group, braft::PeerId(addr));//创建一个raft节点
+        if (node->init(node_options) != 0) {//初始化raft节点
             LOG(ERROR) << "Fail to init raft node";
             delete node;
             return -1;
@@ -232,7 +237,11 @@ friend class FetchAddClosure;
         std::unique_ptr<SnapshotArg> arg_guard(sa);
         // Serialize StateMachine to the snapshot
         brpc::ClosureGuard done_guard(sa->done);
+
         std::string snapshot_path = sa->writer->get_path() + "/data";
+        //生成checkpoint
+        
+
         LOG(INFO) << "Saving snapshot to " << snapshot_path;
         // Use protobuf to store the snapshot for backward compatibility.
         Snapshot s;
@@ -354,7 +363,7 @@ int main(int argc, char* argv[]) {
 
     // Generally you only need one Server.
     brpc::Server server;
-    example::Counter counter;
+    example::Counter counter; //状态机实例
     example::CounterServiceImpl service(&counter);
 
     // Add your service into RPC server

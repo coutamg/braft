@@ -902,6 +902,21 @@ void NodeImpl::snapshot(Closure* done) {
     do_snapshot(done);
 }
 
+//除了依靠定时任务触发以外,Raft 也支持用户实现自定义的 Closure 类的回调方法，
+//通过 Node 接口主动触发 Snapshot，并将结果通过 Closure 回调
+// Node node = ...
+// Closure done = ...
+// node.snapshot(&node)
+/*  同时，用户在继承并实现业务状态机类“StateMachine”（该类为抽象类）时候需要，
+    一并实现其中的  on_snapshot_save()/on_snapshot_load()  方法：
+    on_snapshot_save() 方法：定期保存 Snapshot；
+    on_snapshot_load() 方法：启动或者安装 Snapshot 后加载 Snapshot；
+
+    这里需要注意的是，上面的  on_snapshot_save()  和  on_snapshot_load()  方法均会阻塞 Raft 节点本身的状态机，
+    应该尽量通过异步或其他方式进行优化，避免出现阻塞的情况。对于  on_snapshot_save()  方法，
+    需要在保存快照文件后调用传入的参数 closure->run(status)  通知调用者保存成功或者失败；具体的应用实践示例，
+    可以参考 github 上的 Counter 计数器示例。
+*/
 void NodeImpl::do_snapshot(Closure* done) {
     LOG(INFO) << "node " << _group_id << ":" << _server_id 
               << " starts to do snapshot";

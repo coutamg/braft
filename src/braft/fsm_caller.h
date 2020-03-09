@@ -65,7 +65,10 @@ friend class FSMCaller;
     LogManager* _lm;
     std::vector<Closure*> *_closure;
     int64_t _first_closure_index;
-    int64_t _cur_index;
+    // last_applied_index 最后被应用到状态机的日志条目索引值（初始化为 0，持续递增）
+    int64_t _cur_index; 
+    //已知的最大的已经被提交的日志条目的索引值，如果 leaderCommit > commitIndex ，令 commitIndex 等于 leaderCommit 和 新日志
+    // 条目索引值中较小的一个
     int64_t _committed_index;
     LogEntry* _cur_entry;
     butil::atomic<int64_t>* _applying_index;
@@ -187,7 +190,7 @@ friend class IteratorImpl;
     LogManager *_log_manager;
     StateMachine *_fsm;
     ClosureQueue* _closure_queue;
-    butil::atomic<int64_t> _last_applied_index;
+    butil::atomic<int64_t> _last_applied_index;//最后被应用到状态机的日志条目索引值（初始化为 0，持续递增）
     int64_t _last_applied_term;
     google::protobuf::Closure* _after_shutdown;
     NodeImpl* _node;

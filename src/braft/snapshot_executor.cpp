@@ -13,6 +13,30 @@
 // limitations under the License.
 
 // Authors: Zhangyi Chen(chenzhangyi01@baidu.com)
+// 参考https://www.sofastack.tech/blog/sofa-jraft-snapshot-principle-analysis/
+// 流程图 https://cdn.nlark.com/yuque/0/2019/png/439987/1568774816004-c660d5d5-8f1a-487f-9fa8-3757fed7a939.png
+// 生成快照/安装快照/加载快照
+/*
+    1. 在新扩容的 Raft 节点启动后（它为 Follower 角色），它获取到 Leader 节点发送
+       的安装 Snapshot 的 RPC 请求（InstallSnapshotRequest）后，会在 T1 时刻先调
+       用 SnapshotExecutor 执行器的  installSnapshot()  方法，本地生成如上图所示
+       的“snapshot_1”数据文件。
+    2. 然后，该 Follower 节点从 T2 时刻开始继续执行 Raft 的日志复制流程，从
+       Leader 节点接收到后续的 LogEntry 日志文件（如上图所示的 [Add 5,Sub 2,Add 
+       1] 日志数据集合）。
+    3. 最后，在 T3 时刻，该 Follower 节点，调用 SnapshotExecutor 执行器的 
+       doSnapshot()  方法，合并日志数据集合并生成如上图所示的“snapshot_2”文件，
+       同时会对之前的日志进行一个裁剪。具体的做法是，本地清理删除上图中从
+       “snapshot_1”文件最后的 index+1 位置前的日志。
+
+     为什么不删除从“snapshot_2”文件最后的 index+1 位置前的日志？这里考虑到的主要原
+     因是，在Raft集群中， Leader 和 Follower 节点间做日志复制时，很可能会存在有部
+     分 Follower 节点没有完全跟上 Leader 节点的情况，如果此时 Leader 节点裁剪了从
+     “snapshot_2”文件最后的 index+1 位置前的日志，那剩余未完成日志复制的 
+     Follower 节点就无法从 Leader 节点同步日志，而只能通过 Leader 发送过来的 
+     installSnapshotRequest 来完成同步最新的状态了（感兴趣的同学可以参考着研究下 
+     Raft 源码 LogManagerImpl 类的  setSnapshot()  方法实现）。
+*/
 
 #include "braft/snapshot_executor.h"
 #include "braft/util.h"
@@ -106,10 +130,14 @@ SnapshotExecutor::~SnapshotExecutor() {
     }
 }
 
+/*  该方法用于生成 Raft 节点的快照文件。在该方法中，
+    要先完成以下几个前置状态的校验和检查：
+*/
 void SnapshotExecutor::do_snapshot(Closure* done) {
     std::unique_lock<raft_mutex_t> lck(_mutex);
     int64_t saved_last_snapshot_index = _last_snapshot_index;
     int64_t saved_last_snapshot_term = _last_snapshot_term;
+    //1.是否处于 Stopped 状态；
     if (_stopped) {
         lck.unlock();
         if (done) {
@@ -119,6 +147,7 @@ void SnapshotExecutor::do_snapshot(Closure* done) {
         return;
     }
     // check snapshot install/load
+    // 2.是否正在加载另外一个 Snapshot 文件；
     if (_downloading_snapshot.load(butil::memory_order_relaxed)) {
         lck.unlock();
         if (done) {
@@ -129,6 +158,7 @@ void SnapshotExecutor::do_snapshot(Closure* done) {
     }
 
     // check snapshot saving?
+    // 3.是否正在生成另外一个 Snapshot 文件；
     if (_saving_snapshot) {
         lck.unlock();
         if (done) {
@@ -137,6 +167,10 @@ void SnapshotExecutor::do_snapshot(Closure* done) {
         }
         return;
     }
+    /* 4.当前业务状态机已经提交的 Index 索引是否等于 Snapshot 
+       最后保存的日志 Index 索引（如果两个值相等则表示，
+       业务数据没有新增，无需再生成一次没有意义的 Snapshot）；
+    */
     if (_fsm_caller->last_applied_index() == _last_snapshot_index) {
         // There might be false positive as the last_applied_index() is being
         // updated. But it's fine since we will do next snapshot saving in a
@@ -165,6 +199,9 @@ void SnapshotExecutor::do_snapshot(Closure* done) {
     }
     _saving_snapshot = true;
     SaveSnapshotDone* snapshot_save_done = new SaveSnapshotDone(this, writer, done);
+        //调用了业务状态机实现的  on_snapshot_save()  方法，
+        //这里调用者可以通过参数传入的参数  closure.run(status)  
+        //通知自己保存 Snapshot 文件成功或者失败
     if (_fsm_caller->on_snapshot_save(snapshot_save_done) != 0) {
         lck.unlock();
         if (done) {
@@ -386,6 +423,17 @@ int SnapshotExecutor::init(const SnapshotExecutorOptions& options) {
     return 0;
 }
 
+//该方法主要适用于 Raft 集群中的 Follower 角色节点，
+//在收到从 Leader 节点发送过来的安装 Snapshot 的 RPC 请求后，
+//先会对当前节点的状态做一些前置状态的校验（这一点跟上面的 do_snapshot(...) 
+//方法一样）
+/*
+    1.是否处于 Stopped 状态；
+    2.是否正在生成 Snapshot 文件；
+    3.节点的 term 值是否跟 RPC 请求的 term 值一致；
+    4.Leader 节点发送过来的待安装 Snapshot 文件中的数据是否为最新的；
+    5.是否正在安装前面的 Snapshot 文件；
+*/
 void SnapshotExecutor::install_snapshot(brpc::Controller* cntl,
                                         const InstallSnapshotRequest* request,
                                         InstallSnapshotResponse* response,
@@ -495,17 +543,20 @@ void SnapshotExecutor::load_downloading_snapshot(DownloadingSnapshot* ds,
 
 int SnapshotExecutor::register_downloading_snapshot(DownloadingSnapshot* ds) {
     std::unique_lock<raft_mutex_t> lck(_mutex);
+    //是否处于 Stopped 状态；
     if (_stopped) {
         LOG(WARNING) << "Register failed: node is stopped.";
         ds->cntl->SetFailed(EHOSTDOWN, "Node is stopped");
         return -1;
     }
+    //节点的 term 值是否跟 RPC 请求的 term 值一致；
     if (ds->request->term() != _term) {
         LOG(WARNING) << "Register failed: term unmatch.";
         ds->response->set_success(false);
         ds->response->set_term(_term);
         return -1;
     }
+    //Leader 节点发送过来的待安装 Snapshot 文件中的数据是否为最新的；
     if (ds->request->meta().last_included_index() <= _last_snapshot_index) {
         LOG(WARNING) << "Register failed: snapshot is not newer.";
         ds->response->set_term(_term);
@@ -513,6 +564,7 @@ int SnapshotExecutor::register_downloading_snapshot(DownloadingSnapshot* ds) {
         return -1;
     }
     ds->response->set_term(_term);
+    //是否正在生成 Snapshot 文件；
     if (_saving_snapshot) {
         LOG(WARNING) << "Register failed: is saving snapshot.";
         ds->cntl->SetFailed(EBUSY, "Is saving snapshot");
@@ -542,6 +594,7 @@ int SnapshotExecutor::register_downloading_snapshot(DownloadingSnapshot* ds) {
     // A previouse snapshot is under installing, check if this is the same
     // snapshot and resume it, otherwise drop previous snapshot as this one is
     // newer
+    //是否正在安装前面的 Snapshot 文件；
     if (m->request->meta().last_included_index() 
             == ds->request->meta().last_included_index()) {
         // m is a retry

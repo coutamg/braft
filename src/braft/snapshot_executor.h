@@ -62,7 +62,7 @@ public:
 
     // Start to snapshot StateMachine, and |done| is called after the execution
     // finishes or fails.
-    void do_snapshot(Closure* done);
+    void do_snapshot(Closure* done); //核心方法之一
 
     // Install snapshot according to the very RPC from leader
     // After the installing succeeds (StateMachine is reset with the snapshot)
@@ -75,6 +75,7 @@ public:
     //  - Interrupted: happens when interrupt_downloading_snapshot is called or
     //    a new RPC with the same or newer snapshot arrives
     //  - Busy: the state machine is saving or loading snapshot
+    //核心方法之一
     void install_snapshot(brpc::Controller* controller,
                           const InstallSnapshotRequest* request,
                           InstallSnapshotResponse* response,

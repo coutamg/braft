@@ -50,7 +50,7 @@ const PeerId ANY_PEER(butil::EndPoint(butil::IP_ANY, 0), 0);
 
 // Raft-specific closure which encloses a butil::Status to report if the
 // operation was successful.
-// Closure ¾ÍÊÇÒ»¸ö¼òµ¥µÄ callback ½Ó¿Ú£¬ Ìá¹©µÄ´ó²¿·Ö·½·¨¶¼ÊÇÒì²½µÄ»Øµ÷Ä£Ê½£¬½á¹ûÍ¨¹ı´Ë½Ó¿ÚÍ¨Öª£º
+// Closure å°±æ˜¯ä¸€ä¸ªç®€å•çš„ callback æ¥å£ï¼Œ æä¾›çš„å¤§éƒ¨åˆ†æ–¹æ³•éƒ½æ˜¯å¼‚æ­¥çš„å›è°ƒæ¨¡å¼ï¼Œç»“æœé€šè¿‡æ­¤æ¥å£é€šçŸ¥ï¼š
 class Closure : public google::protobuf::Closure {
 public:
     butil::Status& status() { return _st; }
@@ -106,14 +106,14 @@ inline std::ostream& operator<<(std::ostream& os, const Error& e) {
 }
 
 /*
-    Task ÊÇÓÃ»§Ê¹ÓÃ raft ×îºËĞÄµÄÀàÖ®Ò»£¬ÓÃÓÚÏòÒ»¸ö raft ¸´ÖÆ·Ö×éÌá½»Ò»¸öÈÎÎñ£¬Õâ¸öÈÎÎñÌá½»µ½ leader£¬²¢¸´ÖÆµ½ÆäËû follower ½Úµã£¬ Task °üÀ¨£º
-        butil::IOBuf* data ÈÎÎñµÄÊı¾İ£¬ÓÃ»§Ó¦µ±½«Òª¸´ÖÆµÄÒµÎñÊı¾İÍ¨¹ıÒ»¶¨ĞòÁĞ»¯·½Ê½ĞòÁĞ»¯³ÉÒ»¸ö ByteBuffer£¬·Åµ½ task Àï¡£
+    Task æ˜¯ç”¨æˆ·ä½¿ç”¨ raft æœ€æ ¸å¿ƒçš„ç±»ä¹‹ä¸€ï¼Œç”¨äºå‘ä¸€ä¸ª raft å¤åˆ¶åˆ†ç»„æäº¤ä¸€ä¸ªä»»åŠ¡ï¼Œè¿™ä¸ªä»»åŠ¡æäº¤åˆ° leaderï¼Œå¹¶å¤åˆ¶åˆ°å…¶ä»– follower èŠ‚ç‚¹ï¼Œ Task åŒ…æ‹¬ï¼š
+        butil::IOBuf* data ä»»åŠ¡çš„æ•°æ®ï¼Œç”¨æˆ·åº”å½“å°†è¦å¤åˆ¶çš„ä¸šåŠ¡æ•°æ®é€šè¿‡ä¸€å®šåºåˆ—åŒ–æ–¹å¼åºåˆ—åŒ–æˆä¸€ä¸ª ByteBufferï¼Œæ”¾åˆ° task é‡Œã€‚
 
-        long expected_term = -1 ÈÎÎñÌá½»Ê±Ô¤ÆÚµÄ leader term£¬Èç¹û²»Ìá¹©(Ò²¾ÍÊÇÄ¬ÈÏÖµ -1 )£¬ÔÚÈÎÎñÓ¦ÓÃµ½×´Ì¬»úÖ®Ç°²»»á¼ì²é leader ÊÇ·ñ·¢ÉúÁË±ä¸ü£¬
-                            Èç¹ûÌá¹©ÁË£¨´Ó×´Ì¬»ú»Øµ÷ÖĞ»ñÈ¡£¬²Î¼ûÏÂÎÄ£©£¬ÄÇÃ´ÔÚ½«ÈÎÎñÓ¦ÓÃµ½×´Ì¬»úÖ®Ç°£¬»á¼ì²é term ÊÇ·ñÆ¥Åä£¬Èç¹û²»Æ¥Åä½«¾Ü¾ø¸ÃÈÎÎñ¡£
+        long expected_term = -1 ä»»åŠ¡æäº¤æ—¶é¢„æœŸçš„ leader termï¼Œå¦‚æœä¸æä¾›(ä¹Ÿå°±æ˜¯é»˜è®¤å€¼ -1 )ï¼Œåœ¨ä»»åŠ¡åº”ç”¨åˆ°çŠ¶æ€æœºä¹‹å‰ä¸ä¼šæ£€æŸ¥ leader æ˜¯å¦å‘ç”Ÿäº†å˜æ›´ï¼Œ
+                            å¦‚æœæä¾›äº†ï¼ˆä»çŠ¶æ€æœºå›è°ƒä¸­è·å–ï¼Œå‚è§ä¸‹æ–‡ï¼‰ï¼Œé‚£ä¹ˆåœ¨å°†ä»»åŠ¡åº”ç”¨åˆ°çŠ¶æ€æœºä¹‹å‰ï¼Œä¼šæ£€æŸ¥ term æ˜¯å¦åŒ¹é…ï¼Œå¦‚æœä¸åŒ¹é…å°†æ‹’ç»è¯¥ä»»åŠ¡ã€‚
 
-        Closure* done ÈÎÎñµÄ»Øµ÷£¬ÔÚÈÎÎñÍê³ÉµÄÊ±ºòÍ¨Öª´Ë¶ÔÏó£¬ÎŞÂÛ³É¹¦»¹ÊÇÊ§°Ü¡£Õâ¸ö closure ½«ÔÚ StateMachine#onApply(iterator) ·½·¨Ó¦ÓÃµ½×´Ì¬»úµÄÊ±ºò£¬
-                            ¿ÉÒÔÄÃµ½²¢µ÷ÓÃ£¬Ò»°ãÓÃÓÚ¿Í»§¶ËÓ¦´ğµÄ·µ»Ø¡£
+        Closure* done ä»»åŠ¡çš„å›è°ƒï¼Œåœ¨ä»»åŠ¡å®Œæˆçš„æ—¶å€™é€šçŸ¥æ­¤å¯¹è±¡ï¼Œæ— è®ºæˆåŠŸè¿˜æ˜¯å¤±è´¥ã€‚è¿™ä¸ª closure å°†åœ¨ StateMachine#onApply(iterator) æ–¹æ³•åº”ç”¨åˆ°çŠ¶æ€æœºçš„æ—¶å€™ï¼Œ
+                            å¯ä»¥æ‹¿åˆ°å¹¶è°ƒç”¨ï¼Œä¸€èˆ¬ç”¨äºå®¢æˆ·ç«¯åº”ç­”çš„è¿”å›ã€‚
 */
 // Basic message structure of libraft
 struct Task {
@@ -204,7 +204,7 @@ friend class FSMCaller;
 // NOTE: All the interfaces are not guaranteed to be thread safe and they are 
 // called sequentially, saying that every single operation will block all the 
 // following ones.
-//×¢Òâ£ºËùÓĞµÄ½Ó¿Ú¶¼²»ÄÜ±£Ö¤ÊÇÏß³Ì°²È«µÄ£¬ËüÃÇÊÇ°´Ë³Ğòµ÷ÓÃµÄ£¬Ã¿Ò»¸ö²Ù×÷¶¼»á×èÈûÏÂÃæµÄËùÓĞ²Ù×÷¡£
+//æ³¨æ„ï¼šæ‰€æœ‰çš„æ¥å£éƒ½ä¸èƒ½ä¿è¯æ˜¯çº¿ç¨‹å®‰å…¨çš„ï¼Œå®ƒä»¬æ˜¯æŒ‰é¡ºåºè°ƒç”¨çš„ï¼Œæ¯ä¸€ä¸ªæ“ä½œéƒ½ä¼šé˜»å¡ä¸‹é¢çš„æ‰€æœ‰æ“ä½œã€‚
 class StateMachine {
 public:
     virtual ~StateMachine();
@@ -220,9 +220,9 @@ public:
     // tasks through |iter| have been successfully applied. And if you didn't
     // apply all the the given tasks, we would regard this as a critical error
     // and report a error whose type is ERROR_TYPE_STATE_MACHINE.
-    /*×îºËĞÄµÄ·½·¨£¬Ó¦ÓÃÈÎÎñÁĞ±íµ½×´Ì¬»ú£¬ÈÎÎñ½«°´ÕÕÌá½»Ë³ĞòÓ¦ÓÃ¡£
-        Çë×¢Òâ£¬µ±Õâ¸ö·½·¨·µ»ØµÄÊ±ºò£¬ÎÒÃÇ¾ÍÈÏÎªÕâÒ»ÅúÈÎÎñ¶¼ÒÑ¾­³É¹¦Ó¦ÓÃµ½×´Ì¬»úÉÏ£¬Èç¹ûÄãÃ»ÓĞÍêÈ«Ó¦ÓÃ£¨±ÈÈç´íÎó¡¢Òì³££©£¬
-        ½«»á±»µ±×öÒ»¸ö critical ¼¶±ğµÄ´íÎó£¬±¨¸æ¸ø×´Ì¬»úµÄ onError ·½·¨£¬´íÎóÀàĞÍÎª ERROR_TYPE_STATE_MACHINE
+    /*æœ€æ ¸å¿ƒçš„æ–¹æ³•ï¼Œåº”ç”¨ä»»åŠ¡åˆ—è¡¨åˆ°çŠ¶æ€æœºï¼Œä»»åŠ¡å°†æŒ‰ç…§æäº¤é¡ºåºåº”ç”¨ã€‚
+        è¯·æ³¨æ„ï¼Œå½“è¿™ä¸ªæ–¹æ³•è¿”å›çš„æ—¶å€™ï¼Œæˆ‘ä»¬å°±è®¤ä¸ºè¿™ä¸€æ‰¹ä»»åŠ¡éƒ½å·²ç»æˆåŠŸåº”ç”¨åˆ°çŠ¶æ€æœºä¸Šï¼Œå¦‚æœä½ æ²¡æœ‰å®Œå…¨åº”ç”¨ï¼ˆæ¯”å¦‚é”™è¯¯ã€å¼‚å¸¸ï¼‰ï¼Œ
+        å°†ä¼šè¢«å½“åšä¸€ä¸ª critical çº§åˆ«çš„é”™è¯¯ï¼ŒæŠ¥å‘Šç»™çŠ¶æ€æœºçš„ onError æ–¹æ³•ï¼Œé”™è¯¯ç±»å‹ä¸º ERROR_TYPE_STATE_MACHINE
     */
     virtual void on_apply(::braft::Iterator& iter) = 0;
 
@@ -251,16 +251,16 @@ public:
 
     // Invoked when this node steps down from the leader of the replication
     // group and |status| describes detailed information
-    // µ±Ç°×´Ì¬»úËùÊôµÄ raft ½ÚµãÊ§È¥ leader ×Ê¸ñÊ±µ÷ÓÃ£¬
-    // status ×Ö¶ÎÃèÊöÁËÏêÏ¸µÄÔ­Òò£¬±ÈÈçÖ÷¶¯×ªÒÆ leadership¡¢ÖØĞÂ·¢ÉúÑ¡¾ÙµÈ
+    // å½“å‰çŠ¶æ€æœºæ‰€å±çš„ raft èŠ‚ç‚¹å¤±å» leader èµ„æ ¼æ—¶è°ƒç”¨ï¼Œ
+    // status å­—æ®µæè¿°äº†è¯¦ç»†çš„åŸå› ï¼Œæ¯”å¦‚ä¸»åŠ¨è½¬ç§» leadershipã€é‡æ–°å‘ç”Ÿé€‰ä¸¾ç­‰
     virtual void on_leader_stop(const butil::Status& status);
 
     // on_error is called when a critical error was encountered, after this
     // point, no any further modification is allowed to applied to this node
     // until the error is fixed and this node restarts.
-    /* µ± critical ´íÎó·¢ÉúµÄÊ±ºò£¬»áµ÷ÓÃ´Ë·½·¨£¬braft::Error °üº¬ÁË status µÈÏêÏ¸µÄ´íÎóĞÅÏ¢£»
-        µ±Õâ¸ö·½·¨±»µ÷ÓÃºó£¬½«²»ÔÊĞíĞÂµÄÈÎÎñÓ¦ÓÃµ½×´Ì¬»ú£¬Ö±µ½´íÎó±»ĞŞ¸´²¢ÇÒ½Úµã±»ÖØÆô¡£Òò´Ë¶ÔÓÚÈÎºÎÔÚ¿ª·¢½×¶Î·¢ÏÖµÄ´íÎó£¬
-        ¶¼Ó¦µ±¼°Ê±×öĞŞÕı£¬Èç¹ûÊÇ raft µÄÎÊÌâ£¬Çë¼°Ê±±¨¸æ¡£
+    /* å½“ critical é”™è¯¯å‘ç”Ÿçš„æ—¶å€™ï¼Œä¼šè°ƒç”¨æ­¤æ–¹æ³•ï¼Œbraft::Error åŒ…å«äº† status ç­‰è¯¦ç»†çš„é”™è¯¯ä¿¡æ¯ï¼›
+        å½“è¿™ä¸ªæ–¹æ³•è¢«è°ƒç”¨åï¼Œå°†ä¸å…è®¸æ–°çš„ä»»åŠ¡åº”ç”¨åˆ°çŠ¶æ€æœºï¼Œç›´åˆ°é”™è¯¯è¢«ä¿®å¤å¹¶ä¸”èŠ‚ç‚¹è¢«é‡å¯ã€‚å› æ­¤å¯¹äºä»»ä½•åœ¨å¼€å‘é˜¶æ®µå‘ç°çš„é”™è¯¯ï¼Œ
+        éƒ½åº”å½“åŠæ—¶åšä¿®æ­£ï¼Œå¦‚æœæ˜¯ raft çš„é—®é¢˜ï¼Œè¯·åŠæ—¶æŠ¥å‘Šã€‚
     */
     virtual void on_error(const ::braft::Error& e);
 
@@ -501,6 +501,9 @@ struct NodeOptions {
     // A follower would become a candidate if it doesn't receive any message 
     // from the leader in |election_timeout_ms| milliseconds
     // Default: 1000 (1s)
+    // ä¸€ä¸ª follower å½“è¶…è¿‡è¿™ä¸ªè®¾å®šæ—¶é—´æ²¡æœ‰æ”¶åˆ° leader çš„æ¶ˆæ¯åï¼Œå˜æˆ candidate èŠ‚ç‚¹çš„æ—¶é—´ã€‚
+    // leader ä¼šåœ¨ electionTimeoutMs æ—¶é—´å†…å‘ follower å‘æ¶ˆæ¯ï¼ˆå¿ƒè·³æˆ–è€…å¤åˆ¶æ—¥å¿—ï¼‰ï¼Œå¦‚æœæ²¡æœ‰æ”¶åˆ°ï¼Œ
+    // follower å°±éœ€è¦è¿›å…¥ candidateçŠ¶æ€ï¼Œå‘èµ·é€‰ä¸¾æˆ–è€…ç­‰å¾…æ–°çš„ leader å‡ºç°ï¼Œé»˜è®¤1ç§’ã€‚
     int election_timeout_ms; //follower to candidate timeout
 
     // Max clock drift time. It will be used to keep the safety of leader lease.
@@ -512,6 +515,7 @@ struct NodeOptions {
     // If |snapshot_interval_s| <= 0, the time based snapshot would be disabled.
     //
     // Default: 3600 (1 hour)
+    // è‡ªåŠ¨ Snapshot é—´éš”æ—¶é—´ï¼Œé»˜è®¤ä¸€ä¸ªå°æ—¶
     int snapshot_interval_s;
 
     // We will regard a adding peer as caught up if the margin between the
@@ -527,6 +531,8 @@ struct NodeOptions {
     // the existing environment.
     //
     // Default: A empty group
+    // å½“èŠ‚ç‚¹æ˜¯ä»ä¸€ä¸ªç©ºç™½çŠ¶æ€å¯åŠ¨ï¼ˆsnapshotå’Œlogå­˜å‚¨éƒ½ä¸ºç©ºï¼‰ï¼Œé‚£ä¹ˆä»–ä¼šä½¿ç”¨è¿™ä¸ªåˆå§‹é…ç½®ä½œä¸º raft group
+    // çš„é…ç½®å¯åŠ¨ï¼Œå¦åˆ™ä¼šä»å­˜å‚¨ä¸­åŠ è½½å·²æœ‰é…ç½®ã€‚
     Configuration initial_conf;
 
     // Run the user callbacks and user closures in pthread rather than bthread
@@ -536,6 +542,7 @@ struct NodeOptions {
 
     // The specific StateMachine implemented your business logic, which must be
     // a valid instance.
+    // æœ€æ ¸å¿ƒçš„ï¼Œå±äºæœ¬ raft èŠ‚ç‚¹çš„åº”ç”¨çŠ¶æ€æœºå®ä¾‹ã€‚
     StateMachine* fsm;
 
     // If |node_owns_fsm| is true. |fms| would be destroyed when the backing
@@ -558,6 +565,7 @@ struct NodeOptions {
 
     // Describe a specific LogStorage in format ${type}://${parameters}
     // It's valid iff |log_storage| is null
+    // Raft èŠ‚ç‚¹çš„æ—¥å¿—å­˜å‚¨è·¯å¾„ï¼Œå¿…é¡»æœ‰
     std::string log_uri;
 
     // Describe a specific RaftMetaStorage in format ${type}://${parameters}
@@ -583,9 +591,11 @@ struct NodeOptions {
     // Upgrade and Downgrade steps:
     //     upgrade from Single to Merged: local -> mixed -> merged
     //     downgrade from Merged to Single: merged -> mixed -> local
+    // Raft èŠ‚ç‚¹çš„å…ƒä¿¡æ¯å­˜å‚¨è·¯å¾„ï¼Œå¿…é¡»æœ‰
     std::string raft_meta_uri;
 
     // Describe a specific SnapshotStorage in format ${type}://${parameters}
+    // Raft èŠ‚ç‚¹çš„ snapshot å­˜å‚¨è·¯å¾„ï¼Œå¯é€‰ï¼Œä¸æä¾›å°±å…³é—­äº† snapshot åŠŸèƒ½ã€‚
     std::string snapshot_uri;
 
     // If enable, we will filter duplicate files before copy remote snapshot,
@@ -604,6 +614,7 @@ struct NodeOptions {
 
     // If true, RPCs through raft_cli will be denied.
     // Default: false
+    // æ˜¯å¦å…³é—­ Cli æœåŠ¡ï¼Œé»˜è®¤ä¸å…³é—­
     bool disable_cli;
 
     // Construct a default instance
@@ -629,9 +640,9 @@ inline NodeOptions::NodeOptions()
 class NodeImpl;
 class Node {
 public:
-    /*  Ò»¸öNode´ú±íÁËÒ»¸öRAFTÊµÀı£¬ NodeµÄIDÓÉÁ½¸ö²¿·Ö×é³É:
-        GroupId: ÎªÒ»¸östring, ±íÊ¾Õâ¸ö¸´ÖÆ×éµÄID.
-        PeerId, ½á¹¹ÊÇÒ»¸öEndPoint±íÊ¾¶ÔÍâ·şÎñµÄ¶Ë¿Ú, Íâ¼ÓÒ»¸öindex(Ä¬ÈÏÎª0). ÆäÖĞindexµÄ×÷ÓÃÊÇÈÃ²»Í¬µÄ¸±±¾ÄÜÔËĞĞÔÚÍ¬Ò»¸ö½ø³ÌÄÚ, ÔÚÏÂÃæ¼¸¸ö³¡¾°ÖĞ£¬Õâ¸öÖµ²»ÄÜºöÂÔ:
+    /*  ä¸€ä¸ªNodeä»£è¡¨äº†ä¸€ä¸ªRAFTå®ä¾‹ï¼Œ Nodeçš„IDç”±ä¸¤ä¸ªéƒ¨åˆ†ç»„æˆ:
+        GroupId: ä¸ºä¸€ä¸ªstring, è¡¨ç¤ºè¿™ä¸ªå¤åˆ¶ç»„çš„ID.
+        PeerId, ç»“æ„æ˜¯ä¸€ä¸ªEndPointè¡¨ç¤ºå¯¹å¤–æœåŠ¡çš„ç«¯å£, å¤–åŠ ä¸€ä¸ªindex(é»˜è®¤ä¸º0). å…¶ä¸­indexçš„ä½œç”¨æ˜¯è®©ä¸åŒçš„å‰¯æœ¬èƒ½è¿è¡Œåœ¨åŒä¸€ä¸ªè¿›ç¨‹å†…, åœ¨ä¸‹é¢å‡ ä¸ªåœºæ™¯ä¸­ï¼Œè¿™ä¸ªå€¼ä¸èƒ½å¿½ç•¥:
     */
     Node(const GroupId& group_id, const PeerId& peer_id);
     virtual ~Node();
@@ -640,6 +651,7 @@ public:
     NodeId node_id();
 
     // get leader PeerId, for redirect
+    //è·å–å½“å‰ raft group çš„ leader peerIdï¼Œå¦‚æœæœªçŸ¥ï¼Œè¿”å› null
     PeerId leader_id();
 
     // Return true if this is the leader of the belonging group
@@ -663,6 +675,7 @@ public:
     // shutdown local replica.
     // done is user defined function, maybe response to client or clean some resource
     // [NOTE] code after apply can't access resource in done
+    //å‰è€…ç”¨äºåœæ­¢ä¸€ä¸ª raft èŠ‚ç‚¹ï¼Œåè€…å¯ä»¥åœ¨ shutdown è°ƒç”¨åç­‰å¾…åœæ­¢è¿‡ç¨‹ç»“æŸã€‚
     void shutdown(Closure* done);
 
     // Block the thread until the node is successfully stopped.
@@ -679,6 +692,8 @@ public:
     //              will pass the ownership to StateMachine::on_apply.
     //              Otherwise we will specify the error and call it.
     //
+    //æäº¤ä¸€ä¸ªæ–°ä»»åŠ¡åˆ° raft groupï¼Œæ­¤æ–¹æ³•æ˜¯çº¿ç¨‹å®‰å…¨å¹¶ä¸”éé˜»å¡ï¼Œæ— è®ºä»»åŠ¡æ˜¯å¦æˆåŠŸæäº¤åˆ° raft groupï¼Œ
+    //éƒ½ä¼šé€šè¿‡ task å…³è”çš„ closure done é€šçŸ¥åˆ°ã€‚å¦‚æœå½“å‰èŠ‚ç‚¹ä¸æ˜¯ leaderï¼Œä¼šç›´æ¥å¤±è´¥é€šçŸ¥ done closureã€‚
     void apply(const Task& task);
 
     // list peers of this raft group, only leader retruns ok
@@ -710,6 +725,7 @@ public:
 
     // Start a snapshot immediately if possible. done->Run() would be invoked
     // when the snapshot finishes, describing the detailed result.
+    //è§¦å‘å½“å‰èŠ‚ç‚¹æ‰§è¡Œä¸€æ¬¡ snapshot ä¿å­˜æ“ä½œï¼Œç»“æœé€šè¿‡ done é€šçŸ¥
     void snapshot(Closure* done);
 
     // user trigger vote

@@ -181,7 +181,7 @@ public:
     void handle_election_timeout();
     void handle_vote_timeout();
     void handle_stepdown_timeout();
-    void handle_snapshot_timeout();
+    void handle_snapshot_timeout();//定时启动生成snapshot
     void handle_transfer_timeout(int64_t term, const PeerId& peer);
 
     // Closure call func
@@ -290,7 +290,7 @@ friend class butil::RefCountedThreadSafe<NodeImpl>;
                                     const Configuration* old_conf,
                                     bool leader_start);
 
-    void do_snapshot(Closure* done);
+    void do_snapshot(Closure* done);//生成snapshot
 
     void after_shutdown();
     static void after_shutdown(NodeImpl* node);

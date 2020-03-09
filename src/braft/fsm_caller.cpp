@@ -259,6 +259,7 @@ void FSMCaller::do_committed(int64_t committed_index) {
                                         butil::memory_order_relaxed);
 
     // We can tolerate the disorder of committed_index
+    //
     if (last_applied_index >= committed_index) {
         return;
     }
@@ -565,6 +566,7 @@ void IteratorImpl::next() {
     if (_cur_index <= _committed_index) {
         ++_cur_index;
         if (_cur_index <= _committed_index) {
+            //从log管理机里面拿出符合条件的日志
             _cur_entry = _lm->get_entry(_cur_index);
             if (_cur_entry == NULL) {
                 _error.set_type(ERROR_TYPE_LOG);
