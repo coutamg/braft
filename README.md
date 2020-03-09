@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 
+=======
+>>>>>>> fcea8861fb65ae07d6ff732b3ee7b3ce8e8a0051
 尝试阅读braft源码，促使更加了解raft
 
 [![Build Status](https://travis-ci.org/brpc/braft.svg?branch=master)](https://travis-ci.org/brpc/braft)
