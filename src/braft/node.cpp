@@ -528,6 +528,7 @@ int NodeImpl::init(const NodeOptions& options) {
     // snapshot storage init and load
     // NOTE: snapshot maybe discard entries when snapshot saved but not discard entries.
     //      init log storage before snapshot storage, snapshot storage will update configration
+    // snapshot初始化
     if (init_snapshot_storage() != 0) {
         LOG(ERROR) << "node " << _group_id << ":" << _server_id
                    << " init_snapshot_storage failed";

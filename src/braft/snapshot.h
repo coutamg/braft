@@ -119,7 +119,7 @@ private:
     virtual ~LocalSnapshotReader();
     void destroy_reader_in_file_service();
 
-    std::string _path;
+    std::string _path;//snapshot的路径
     LocalSnapshotMetaTable _meta_table;
     butil::EndPoint _addr;
     int64_t _reader_id;
@@ -212,7 +212,7 @@ private:
     void unref(const int64_t index);
 
     raft_mutex_t _mutex;
-    std::string _path;
+    std::string _path; //snapshot的路径
     bool _filter_before_copy_remote;
     int64_t _last_snapshot_index;
     std::map<int64_t, int> _ref_map;

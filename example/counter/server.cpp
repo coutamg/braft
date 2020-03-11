@@ -238,6 +238,7 @@ friend class FetchAddClosure;
         // Serialize StateMachine to the snapshot
         brpc::ClosureGuard done_guard(sa->done);
 
+        //调用的是LocalSnapshotReader子类的get_path，返回的是配置中的snapshot_uri路径
         std::string snapshot_path = sa->writer->get_path() + "/data";
         //生成checkpoint
         
@@ -286,6 +287,7 @@ friend class FetchAddClosure;
             LOG(ERROR) << "Fail to load snapshot from " << snapshot_path;
             return -1;
         }
+        //这里应该是进行checkpoint的回放
         _value.store(s.value(), butil::memory_order_relaxed);
         return 0;
     }

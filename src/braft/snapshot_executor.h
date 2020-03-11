@@ -35,7 +35,7 @@ class FileSystemAdaptor;
 struct SnapshotExecutorOptions {
     SnapshotExecutorOptions();
     // URI of SnapshotStorage
-    std::string uri;
+    std::string uri;//snapshot存储路径
    
     FSMCaller* fsm_caller;
     NodeImpl* node;
