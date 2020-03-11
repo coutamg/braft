@@ -153,10 +153,10 @@ public:
 
     // rpc request proc func
     //
-    // handle received PreVote
+    // handle received PreVote 处理预投票请求
     int handle_pre_vote_request(const RequestVoteRequest* request,
                                 RequestVoteResponse* response);
-    // handle received RequestVote
+    // handle received RequestVote 处理投票请求
     int handle_request_vote_request(const RequestVoteRequest* request,
                      RequestVoteResponse* response);
 
@@ -273,10 +273,10 @@ friend class butil::RefCountedThreadSafe<NodeImpl>;
     // requests.
     void check_step_down(const int64_t term, const PeerId& server_id);
 
-    // pre vote before elect_self
+    // pre vote before elect_self 预投票
     void pre_vote(std::unique_lock<raft_mutex_t>* lck);
 
-    // elect self to candidate
+    // elect self to candidate 投票
     void elect_self(std::unique_lock<raft_mutex_t>* lck);
 
     // grant self a vote
@@ -465,7 +465,7 @@ private:
 
     State _state;//标志raft节点处于什么角色
     int64_t _current_term;//对于follow来说，这个值就是与它通信的leade的term
-    int64_t _last_leader_timestamp;
+    int64_t _last_leader_timestamp;//leader上次更新数据的时间，解决网络分区问题
     PeerId _leader_id;
     PeerId _voted_id;
     VoteBallotCtx _vote_ctx; // candidate vote ctx
@@ -560,6 +560,13 @@ private:
     1. 如果 term < currentTerm 返回 false 
     2. 如果 votedFor 为空或者为 candidateId，并且候选人的日志至少和自己一样新，那么就投票给他
 
+    保证Follower 的 Term 同步递增：当参与投票的 Follower 收到投票请求后，如果发现自己的 Term 比投票请求里的小，
+    就会自觉更新自己的 Term 向候选者看齐，这样能够很方便的将 Term 递增的信息同步到集群中。但是会造成term不断增大
+    导致leader stepdown
+    参考：https://www.sofastack.tech/blog/sofa-jraft-election-mechanism/
+    通过预投票 (pre-vote)可以解决上述问题：候选者在发起投票之前，先发起预投票，如果没有得到半数以上节点的反馈，
+                                          则候选者就会识趣的放弃参选，也就不会抬升全局的 Term，对应的Follower
+                                          还是会跟新自己的 Term 和 pre-vote 中的 Term 一致
 
 所有服务器需遵守的规则:
     1.如果 commitIndex > lastApplied ，那么就 lastApplied 加一，并把log[lastApplied] 应用到状态机中
@@ -587,6 +594,69 @@ private:
         b.如果因为日志不一致而失败，减少 nextIndex 重试
     4. 如果存在一个满足 N > commitIndex 的 N，并且大多数的 matchIndex[i] ≥ N 成立，并且 log[N].term == currentTerm 成立，
         那么令 commitIndex 等于这个 N
+
+
+预投票与投票：
+    预投票过程
+     election_timer触发election_timeout                                         
+     handle_election_timeout()处理超时事件                                          
+                |                                           
+            进入pre-vote流程                                            
+                \|/                                         
+    check 集群内节点列表(perr list);确认                                            
+    quorum(用于判断大多数节点);获取last_log_id                                          
+                 |                                          
+                组装                                            
+                \|/                                         
+    组装pre_vote_request:                                           
+        pre_vote,       true,表示是pre_vote_request请求                                         
+        group_id,       集群id                                          
+        server_id,      本机id                                          
+        term,           current_term + 1                                            
+        last_log_index, 最新的logid                                         
+        last_log_term,  最新logid对应的term                                         
+                 |                                          
+                发送                                            
+                \|/                                         
+    发送pre_vote_request到其它节点                                          
+                |                                           
+                响应                                            
+                \|/                                         
+    收到pre_vote_response 达到 quorum时                                         
+    发起 electSelf 流程    
+
+
+    票过程
+     节点状态从 Follower 变成 Candidate
+     CurrTerm++, voteTimer开始计时                                        
+                |                                           
+            初始化context                                            
+                \|/                                         
+    check 集群内节点列表(perr list);确认                                            
+    quorum(用于判断大多数节点);获取last_log_id                                          
+                 |                                          
+                组装                                            
+                \|/                                         
+    组装pre_vote_request:                                           
+        pre_vote,       true,表示是pre_vote_request请求                                         
+        group_id,       集群id                                          
+        server_id,      本机id                                          
+        term,           current_term + 1                                            
+        last_log_index, 最新的logid                                         
+        last_log_term,  最新logid对应的term                                         
+                 |                                          
+                发送                                            
+                \|/                                         
+    发送pre_vote_request到其它节点                                          
+                |                                           
+                响应                                            
+                \|/                                         
+    收到pre_vote_response 达到 quorum时                                         
+    变成 leader         
+
+preVote 是由超时触发；
+preVote 在组装 Request 的时候将 term 赋值为 currTerm + 1，而 electSelf 是先将 term ++；
+preVote 成功后，进入 electSelf，electSelf 成功后 become Leader。                           
 */
 
 #endif //~BRAFT_RAFT_NODE_H
