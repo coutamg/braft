@@ -1,0 +1,37 @@
+@startuml
+title node类图
+
+'组合关系
+Node "Node" *--> "NodeImpl" NodeImpl : contains
+
+class Node{
+-NodeImpl* _impl
++apply(const Task& task)
++void snapshot(Closure* done)
+}
+class Node
+note left: Node代表了一个RAFT实例\nNode的ID由两个部分组成:\n  GroupId: 为一个string, 表示这个复制组的ID\n  PeerId, 结构是一个EndPoint表示对外服务的端口, \n    外加一个index(默认为0).其中index的作用是\n    让不同的副本能运行在同一个进程内
+note top of Node
+    Node的方法其实都是调用NodeImpl的方法
+end note
+
+class NodeImpl{
++pre_vote(std::unique_lock<raft_mutex_t>* lck)
++apply(const Task& task)
++snapshot(Closure* done)
++handle_pre_vote_request()
++handle_request_vote_request()
++handle_append_entries_request()
++handle_install_snapshot_request()
+}
+
+class NodeImpl
+note right: 只列出主要的函数
+note bottom of NodeImpl
+handle_pre_vote_request:预投票
+handle_pre_vote_request:投票
+handle_append_entries_request:发送log
+handle_install_snapshot_request:处理快照
+end note
+    
+@enduml

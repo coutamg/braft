@@ -1,0 +1,7 @@
+@startuml
+title server调用node
+== Initialization ==
+node->nodeImpl:init
+nodeImpl->>nodeImpl:init(){\n 1.判断服务是否存在\n 2.初始化 vote,election,stepdown,snapshot 时间;\n 3.execution队列绑定的执行函数是execute_applying_tasks\n 4. _fsm_caller = new FSMCaller()\n 5.初始化log存储\n 6.mete存储初始化\n  7.init_fsm_caller(LogId(0, 0))\n  8._ballot_box初始化绑定_fsm_caller与_closure_queue\n  9.初始化snapshot_executor(负责定时执行save_snapshot)\n  10._replicator_group.init()\n  11._state = STATE_FOLLOWER\n  12.global_node_manager->add(this)\n  13.elect_self(&lck);\n}
+
+@endluml

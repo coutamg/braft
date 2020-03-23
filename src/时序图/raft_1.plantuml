@@ -1,0 +1,19 @@
+@startuml
+title raft时序图1
+== Initialization ==
+
+client ->> client:mian(){\n 开一个线程调用sender();\n}\nsender(){\n   ...\n   brpc::Channel channel;\n   CounterService_Stub stub(&channel);\n   stub.fetch_add()\get()\n  ...\n}\n client起来的时候就开启一个线程负责\n与server通信
+
+server ->> server:main:{\n ...\n add_service(service..);\n server.Start(..);\n ...\n}\n start():{\n 1.创建并设置好 NodeOptions 实例，\n  指定存储路径，如果是空白启动，\n  指定初始节点列表配置 \n 2.创建 Node 实例，\n  并使用 NodeOptions 初始化\n  Node* node = new braft::Node\n   node->init(node_options)\n}\n\n 创建并启动 RpcServer ，\n 提供节点之间的通讯服务。\n listen_address();
+
+
+== request ==
+client->server:fetch_add/get request
+activate server
+server->>server:fetch_add(){\n 业务逻辑\n 构建Task \n _node->apply(task); \n}
+server->node:apply
+node->server:responce
+deactivate server
+server --> client:responce
+
+@enduml

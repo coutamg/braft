@@ -70,6 +70,10 @@ friend class Replicator;
     void _run();
 };
 
+//raft node设计图：https://cdn.nlark.com/yuque/0/2019/png/226702/1553688453081-2f4d6697-eedc-41af-a472-4bc8ba0ba2fa.png
+//raft 集群图：https://cdn.nlark.com/yuque/0/2019/png/226702/1553688453027-b9d01afe-f1ab-4c88-af05-11afafe9cbf7.png
+//
+
 class BAIDU_CACHELINE_ALIGNMENT Replicator {
 public:
     // Called by the leader, otherwise the behavior is undefined

@@ -474,6 +474,7 @@ int NodeImpl::init(const NodeOptions& options) {
 
     _config_manager = new ConfigurationManager();
 
+    //execution队列绑定的执行函数是execute_applying_tasks
     if (bthread::execution_queue_start(&_apply_queue_id, NULL,
                                        execute_applying_tasks, this) != 0) {
         LOG(ERROR) << "node " << _group_id << ":" << _server_id 
@@ -618,6 +619,8 @@ int NodeImpl::execute_applying_tasks(
     // TODO: the batch size should limited by both task size and the total log
     // size
     const size_t batch_size = FLAGS_raft_apply_batch;
+
+    //构造一个数组 tasks  = new LogEntryAndClosure[min(batch_size,256)];
     DEFINE_SMALL_ARRAY(LogEntryAndClosure, tasks, batch_size, 256);
     size_t cur_size = 0;
     NodeImpl* m = (NodeImpl*)meta;
@@ -626,6 +629,7 @@ int NodeImpl::execute_applying_tasks(
             m->apply(tasks, cur_size);
             cur_size = 0;
         }
+        //把leader发送过来的task组成一个Batch
         tasks[cur_size++] = *iter;
     }
     if (cur_size > 0) {
@@ -642,6 +646,8 @@ void NodeImpl::apply(const Task& task) {
     m.entry = entry;
     m.done = task.done;
     m.expected_term = task.expected_term;
+
+    //调用execute_applying_tasks去执行task
     if (_apply_queue->execute(m, &bthread::TASK_OPTIONS_INPLACE, NULL) != 0) {
         task.done->status().set_error(EPERM, "Node is down");
         entry->Release();

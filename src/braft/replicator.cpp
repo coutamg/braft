@@ -110,6 +110,7 @@ int Replicator::start(const ReplicatorOptions& options, ReplicatorId *id) {
     brpc::ChannelOptions channel_opt;
     //channel_opt.connect_timeout_ms = *options.heartbeat_timeout_ms;
     channel_opt.timeout_ms = -1; // We don't need RPC timeout
+    //生成brpc的通信器，也就是建立client与server的socket
     if (r->_sending_channel.Init(options.peer_id.addr, &channel_opt) != 0) {
         LOG(ERROR) << "Fail to init sending channel"
                    << ", group " << options.group_id;
@@ -593,6 +594,7 @@ void Replicator::_send_empty_entries(bool is_heartbeat) {
                 butil::monotonic_time_ms());
 
     RaftService_Stub stub(&_sending_channel);
+    //leader向follower发送log
     stub.append_entries(cntl.release(), request.release(), 
                         response.release(), done);
     CHECK_EQ(0, bthread_id_unlock(_id)) << "Fail to unlock " << _id;
