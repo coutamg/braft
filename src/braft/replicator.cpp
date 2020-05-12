@@ -145,7 +145,7 @@ int Replicator::start(const ReplicatorOptions& options, ReplicatorId *id) {
 }
 
 int Replicator::stop(ReplicatorId id) {
-    bthread_id_t dummy_id = { id };
+    bthread_id_t dummy_id = { id };//找到改id对应的replicator,也就是follow
     Replicator* r = NULL;
     // already stopped
     if (bthread_id_lock(dummy_id, (void**)&r) != 0) {
@@ -356,6 +356,7 @@ void Replicator::_on_heartbeat_returned(
     return;
 }
 
+//附加日志的rpc回调后调用
 void Replicator::_on_rpc_returned(ReplicatorId id, brpc::Controller* cntl,
                      AppendEntriesRequest* request, 
                      AppendEntriesResponse* response,
@@ -642,7 +643,7 @@ int Replicator::_prepare_entry(int offset, EntryMeta* em, butil::IOBuf *data) {
 
 void Replicator::_send_entries() {
     if (_flying_append_entries_size >= FLAGS_raft_max_entries_size ||
-        _append_entries_in_fly.size() >= (size_t)FLAGS_raft_max_parallel_append_entries_rpc_num ||
+        _append_entries_in_fly.size() >= (size_t)FLAGS_raft_max_parallel_append_entries_rpc_num || //pipeline队列大于并行rpc数量
         _st.st == BLOCKING) {
         BRAFT_VLOG << "node " << _options.group_id << ":" << _options.server_id
             << " skip sending AppendEntriesRequest to " << _options.peer_id
@@ -693,7 +694,7 @@ void Replicator::_send_entries() {
                                      request->entries_size(), cntl->call_id()));
     _append_entries_counter++;
     _next_index += request->entries_size();
-    _flying_append_entries_size += request->entries_size();
+    _flying_append_entries_size += request->entries_size();//增加正在正在pipeline中日志长度
     
     g_send_entries_batch_counter << request->entries_size();
 
@@ -928,6 +929,8 @@ void Replicator::_on_install_snapshot_returned(
     return r->_send_entries();
 }
 
+
+//stop调用是 error_code = EPERM, before_destroy = true
 void Replicator::_notify_on_caught_up(int error_code, bool before_destroy) {
     if (_catchup_closure == NULL) {
         return;
@@ -950,7 +953,7 @@ void Replicator::_notify_on_caught_up(int error_code, bool before_destroy) {
                 return;
             }
         }
-    } else { // Timed out or leader step_down
+    } else { // Timed out or leader step_down remove_peer
         if (!_catchup_closure->_error_was_set) {
             _catchup_closure->status().set_error(error_code, "%s", berror(error_code));
         }
@@ -1372,6 +1375,7 @@ int ReplicatorGroup::init(const NodeId& node_id, const ReplicatorGroupOptions& o
     return 0;
 }
 
+//
 int ReplicatorGroup::add_replicator(const PeerId& peer) {
     CHECK_NE(0, _common_options.term);
     if (_rmap.find(peer) != _rmap.end()) {
@@ -1480,7 +1484,7 @@ int ReplicatorGroup::stop_transfer_leadership(const PeerId& peer) {
 
 int ReplicatorGroup::stop_all_and_find_the_next_candidate(
                 ReplicatorId* candidate, const ConfigurationEntry& conf) {
-    *candidate = INVALID_BTHREAD_ID.value;
+    *candidate = INVALID_BTHREAD_ID.value;//0
     PeerId candidate_id;
     const int rc = find_the_next_candidate(&candidate_id, conf);
     if (rc == 0) {

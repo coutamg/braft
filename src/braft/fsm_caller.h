@@ -106,7 +106,7 @@ public:
     virtual SnapshotReader* start() = 0;
 };
 
-class BAIDU_CACHELINE_ALIGNMENT FSMCaller {
+class BAIDU_CACHELINE_ALIGNMENT FSMCaller { //BAIDU_CACHELINE_ALIGNMENT 类的内存对齐方式
 public:
     FSMCaller();
     BRAFT_MOCK ~FSMCaller();

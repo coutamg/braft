@@ -1,0 +1,10 @@
+@startuml
+title: nodeImp init 流程图
+:init;
+if (!global_node_manager->server_exists) then (Yes)
+    :return -1;
+endif
+
+
+
+@enduml

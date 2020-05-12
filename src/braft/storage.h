@@ -119,39 +119,43 @@ inline int gc_dir(const std::string& path) {
     return 0; 
 }
 
+//LogStorage 日志存储实现，定义 Raft 分组节点 Node 的 Log 存储模块核心 API 
 class LogStorage {
 public:
     virtual ~LogStorage() {}
 
-    // init logstorage, check consistency and integrity
+    // init logstorage, check consistency and integrity 
     virtual int init(ConfigurationManager* configuration_manager) = 0;
 
-    // first log index in log
+    // first log index in log 返回日志里的首个日志索引；
     virtual int64_t first_log_index() = 0;
 
-    // last log index in log
+    // last log index in log 返回日志里的末个日志索引；
     virtual int64_t last_log_index() = 0;
 
-    // get logentry by index
+    // get logentry by index 按照日志索引获取 Log Entry 数据；
     virtual LogEntry* get_entry(const int64_t index) = 0;
 
-    // get logentry's term by index
+    // get logentry's term by index 按照日志索引获取 Log Entry 任期；
     virtual int64_t get_term(const int64_t index) = 0;
 
-    // append entries to log
+    // append entries to log 把单个 Log Entry 添加到日志存储；
     virtual int append_entry(const LogEntry* entry) = 0;
 
-    // append entries to log and update IOMetric, return append success number 
+    // append entries to log and update IOMetric, return append success number 把批量 Log Entry 添加到日志存储；
     virtual int append_entries(const std::vector<LogEntry*>& entries, IOMetric* metric) = 0;
 
     // delete logs from storage's head, [first_log_index, first_index_kept) will be discarded
+    // 从 Log 存储头部删除日志；
     virtual int truncate_prefix(const int64_t first_index_kept) = 0;
 
     // delete uncommitted logs from storage's tail, (last_index_kept, last_log_index] will be discarded
+    // 从 Log 存储末尾删除日志；
     virtual int truncate_suffix(const int64_t last_index_kept) = 0;
 
     // Drop all the existing logs and reset next log index to |next_log_index|.
     // This function is called after installing snapshot from leader
+    // 删除所有现有日志，重置下任日志索引。
     virtual int reset(const int64_t next_log_index) = 0;
 
     // Create an instance of this kind of LogStorage with the parameters encoded 

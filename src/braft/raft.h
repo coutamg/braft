@@ -321,6 +321,7 @@ inline bool is_active_state(State s) {
 
 // This class encapsulates the parameter of on_start_following and on_stop_following interfaces.
 class LeaderChangeContext {
+    //DISALLOW_COPY_AND_ASSIGN主要是把该类的拷贝构造函数和赋值构造函数改为 delete 的, 这里也是private的
     DISALLOW_COPY_AND_ASSIGN(LeaderChangeContext);
 public:
     LeaderChangeContext(const PeerId& leader_id, int64_t term, const butil::Status& status)
@@ -518,7 +519,7 @@ struct NodeOptions {
     // 自动 Snapshot 间隔时间，默认一个小时
     int snapshot_interval_s;
 
-    // We will regard a adding peer as caught up if the margin between the
+    // We will regard a adding peer as caught up(赶上) if the margin between the
     // last_log_index of this peer and the last_log_index of leader is less than
     // |catchup_margin|
     //

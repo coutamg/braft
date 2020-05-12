@@ -212,7 +212,7 @@ private:
     void _close_reader();
 
 private:
-    struct FlyingAppendEntriesRpc {
+    struct FlyingAppendEntriesRpc {//表示哪些 logEntry 已经被封装成日志复制 request 发送出去了
         int64_t log_index;
         int entries_size;
         brpc::CallId call_id;
@@ -221,8 +221,9 @@ private:
     };
     
     brpc::Channel _sending_channel;
-    int64_t _next_index;
-    int64_t _flying_append_entries_size;
+    int64_t _next_index;//对于每一个follow, leader需要发给它的下一条日志的索引值
+    //pipeline的时候,某一条rpc成功,之前的则都成功了, 
+    int64_t _flying_append_entries_size;//目前有多少log正在进行pipeline
     int _consecutive_error_times;
     bool _has_succeeded;
     int64_t _timeout_now_index;
@@ -233,7 +234,11 @@ private:
     int64_t _install_snapshot_counter;
     int64_t _readonly_index;
     Stat _st;
-    std::deque<FlyingAppendEntriesRpc> _append_entries_in_fly;
+    /*Leader 维护一个 queue，每发出一批 logEntry 就向 queue 中 添加一个代表这一批 logEntry 的 FlyingAppendEntriesRpc
+        这样当它知道某一批 logEntry 复制失败之后，就可以依赖    queue 中的 Inflight 把该批次 
+        logEntry 以及后续的所有日志重新复制给 follower。既保证日志复制能够完成，又保证了复制日志的顺序不变。
+    */
+    std::deque<FlyingAppendEntriesRpc> _append_entries_in_fly;//pipeline队列的大小
     brpc::CallId _install_snapshot_in_fly;
     brpc::CallId _heartbeat_in_fly;
     brpc::CallId _timeout_now_in_fly;

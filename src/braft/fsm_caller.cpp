@@ -168,8 +168,8 @@ int FSMCaller::init(const FSMCallerOptions &options) {
                              : BTHREAD_ATTR_NORMAL;
     if (bthread::execution_queue_start(&_queue_id,
                                    &execq_opt,
-                                   FSMCaller::run,
-                                   this) != 0) {
+                                   FSMCaller::run, //int (*execute)(void* meta, TaskIterator<T>& iter
+                                   this) != 0) { // void* meta
         LOG(ERROR) << "fsm fail to start execution_queue";
         return -1;
     }
@@ -467,11 +467,13 @@ int FSMCaller::on_start_following(const LeaderChangeContext& start_following_con
     return 0;
 }
 
+//leader step down的时候会调用
 int FSMCaller::on_stop_following(const LeaderChangeContext& stop_following_context) {
     ApplyTask task;
     task.type = STOP_FOLLOWING;
-    LeaderChangeContext* context = new LeaderChangeContext(stop_following_context.leader_id(), 
-            stop_following_context.term(), stop_following_context.status());
+    LeaderChangeContext* context = new LeaderChangeContext(stop_following_context.leader_id(), //旧的leader id
+                                                            stop_following_context.term(),  //旧leader对应的term
+                                                            stop_following_context.status());
     task.leader_change_context = context;
     if (bthread::execution_queue_execute(_queue_id, task) != 0) {
         delete context;

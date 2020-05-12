@@ -258,7 +258,7 @@ int NodeImpl::init_log_storage() {
     if (_options.log_storage) {
         _log_storage = _options.log_storage;
     } else {
-        _log_storage = LogStorage::create(_options.log_uri);
+        _log_storage = LogStorage::create(_options.log_uri);//new SegmentLogStorage()，
     }
     if (!_log_storage) {
         LOG(ERROR) << "node " << _group_id << ":" << _server_id
@@ -460,6 +460,8 @@ int NodeImpl::init(const NodeOptions& options) {
         return -1;
     }
 
+    //在_addr_set中查找对应的ip是否存在, 由NodeManager::add_service添加
+    //Return true if |addr| is reachable by a RPC Server
     if (!global_node_manager->server_exists(_server_id.addr)) {
         LOG(ERROR) << "Group " << _group_id
                    << " No RPC Server attached to " << _server_id.addr
@@ -467,8 +469,15 @@ int NodeImpl::init(const NodeOptions& options) {
         return -1;
     }
 
+    //VoteTimer::init -> NodeTimer::init 
+    // VoteTimer::run -> handle_vote_timeout
     CHECK_EQ(0, _vote_timer.init(this, options.election_timeout_ms + options.max_clock_drift_ms));
+    
+    //ElectionTimer::run -> handle_election_timeout
     CHECK_EQ(0, _election_timer.init(this, options.election_timeout_ms));
+
+    //StepdownTimer::init -> NodeTimer::init
+    // StepdownTimer::run -> handle_stepdown_timeout
     CHECK_EQ(0, _stepdown_timer.init(this, options.election_timeout_ms));
     CHECK_EQ(0, _snapshot_timer.init(this, options.snapshot_interval_s * 1000));
 
@@ -636,7 +645,7 @@ int NodeImpl::execute_applying_tasks(
         m->apply(tasks, cur_size);
     }
     return 0;
-}
+} 
 
 void NodeImpl::apply(const Task& task) {
     LogEntry* entry = new LogEntry;
@@ -801,7 +810,7 @@ void NodeImpl::unsafe_register_conf_change(const Configuration& old_conf,
             if (_state == STATE_TRANSFERRING) {
                 done->status().set_error(EBUSY, "Is transferring leadership");
             } else {
-                done->status().set_error(EPERM, "Not leader");
+                done->status().;(EPERM, "Not leader");
             }
             run_closure_in_bthread(done);
         }
@@ -1659,12 +1668,12 @@ void NodeImpl::step_down(const int64_t term, bool wakeup_a_candidate,
               << " new_term " << term
               << " wakeup_a_candidate=" << wakeup_a_candidate;
 
-    if (!is_active_state(_state)) {
+    if (!is_active_state(_state)) {//检查一下当前node的状态
         return;
     }
     // delete timer and something else
     if (_state == STATE_CANDIDATE) {
-        _vote_timer.stop();
+        _vote_timer.stop();//退出定时选举线程
         _vote_ctx.reset(this);
     } else if (_state == STATE_FOLLOWER) {
         _pre_vote_ctx.reset(this);
@@ -1686,6 +1695,7 @@ void NodeImpl::step_down(const int64_t term, bool wakeup_a_candidate,
     // soft state in memory
     _state = STATE_FOLLOWER;
     // _conf_ctx.reset() will stop replicators of catching up nodes
+    // _conf_ctx.reset() 将阻止复制程序追赶节点
     _conf_ctx.reset();
     _majority_nodes_readonly = false;
 
@@ -1697,7 +1707,7 @@ void NodeImpl::step_down(const int64_t term, bool wakeup_a_candidate,
 
     // meta state
     if (term > _current_term) {
-        _current_term = term;
+        _current_term = term;//更新term
         _voted_id.reset();
         //TODO: outof lock
         butil::Status status = _meta_storage->
@@ -1737,7 +1747,7 @@ void NodeImpl::step_down(const int64_t term, bool wakeup_a_candidate,
 // in lock
 void NodeImpl::reset_leader_id(const PeerId& new_leader_id, 
         const butil::Status& status) {
-    if (new_leader_id.is_empty()) {
+    if (new_leader_id.is_empty()) {//leader step down的时候, 会传入一个空的 peerId, 这个时候leader 的 _state已经是STATE_FOLLOWER 了
         if (!_leader_id.is_empty() && _state > STATE_TRANSFERRING) {
             LeaderChangeContext stop_following_context(_leader_id, 
                     _current_term, status);
@@ -1830,7 +1840,7 @@ void NodeImpl::become_leader() {
 
     // Register _conf_ctx to reject configuration changing before the first log
     // is committed.
-    CHECK(!_conf_ctx.is_busy());
+    CHECK(!_conf_ctx.is_busy());//最初的时候 _conf_ctx.__stage = STAGE_NONE
     _conf_ctx.flush(_conf.conf, _conf.old_conf);
     _stepdown_timer.start();
 }
@@ -3073,10 +3083,10 @@ void NodeImpl::ConfigurationCtx::flush(const Configuration& conf,
     CHECK(!is_busy());
     conf.list_peers(&_new_peers);
     if (old_conf.empty()) {
-        _stage = STAGE_STABLE;
+        _stage = STAGE_STABLE;//node最初起来成为leader的时候，old_conf为空，进入这里
         _old_peers = _new_peers;
     } else {
-        _stage = STAGE_JOINT;
+        _stage = STAGE_JOINT;////node起来运行一段时间后,被选为新leader的时候，old_conf为空，进入这里
         old_conf.list_peers(&_old_peers);
     }
     _node->unsafe_apply_configuration(conf, old_conf.empty() ? NULL : &old_conf,
@@ -3114,8 +3124,8 @@ void NodeImpl::ConfigurationCtx::on_caughtup(
 void NodeImpl::ConfigurationCtx::next_stage() {
     CHECK(is_busy());
     switch (_stage) {
-    case STAGE_CATCHING_UP:
-        if (_nchanges > 1) {
+    case STAGE_CATCHING_UP: //注意所有的case没有break, 从第一个进来后会一直往下走
+        if (_nchanges > 1) {//改变的peer大于1个
             _stage = STAGE_JOINT;
             Configuration old_conf(_old_peers);
             return _node->unsafe_apply_configuration(
@@ -3128,7 +3138,7 @@ void NodeImpl::ConfigurationCtx::next_stage() {
         _stage = STAGE_STABLE;
         return _node->unsafe_apply_configuration(
                     Configuration(_new_peers), NULL, false);
-    case STAGE_STABLE:
+    case STAGE_STABLE://所有的状态最终都变成STAGE_STABLE
         {
             bool should_step_down = 
                 _new_peers.find(_node->_server_id) == _new_peers.end();
@@ -3146,6 +3156,7 @@ void NodeImpl::ConfigurationCtx::next_stage() {
     }
 }
 
+//1. step down过来 st == NULL, _stage = STATE_FOLLOWER
 void NodeImpl::ConfigurationCtx::reset(butil::Status* st) {
     // reset() should be called only once
     if (_stage == STAGE_NONE) {
@@ -3158,7 +3169,7 @@ void NodeImpl::ConfigurationCtx::reset(butil::Status* st) {
               << " reset ConfigurationCtx, new_peers: " << Configuration(_new_peers)
               << ", old_peers: " << Configuration(_old_peers);
     if (st && st->ok()) {
-        _node->stop_replicator(_new_peers, _old_peers);
+        _node->stop_replicator(_new_peers, _old_peers);//remove_peer在这里停止
     } else {
         // leader step_down may stop replicators of catching up nodes, leading to
         // run catchup_closure

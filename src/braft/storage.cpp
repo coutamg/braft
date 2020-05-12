@@ -51,7 +51,7 @@ LogStorage* LogStorage::create(const std::string& uri) {
                    << ", uri=" << uri;
         return NULL;
     }
-    return type->new_instance(parameter);
+    return type->new_instance(parameter);// new SegmentLogStorage(uri),位于 log.h中
 }
 
 butil::Status LogStorage::destroy(const std::string& uri) {

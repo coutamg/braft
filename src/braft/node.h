@@ -65,7 +65,7 @@ protected:
 
 class VoteTimer : public NodeTimer {
 protected:
-    void run();
+    void run();//调用handle_vote_timeout()
     int adjust_timeout_ms(int timeout_ms);
 };
 
@@ -327,7 +327,7 @@ private:
         enum Stage {
             // Don't change the order if you are not sure about the usage
             STAGE_NONE = 0,
-            STAGE_CATCHING_UP = 1,
+            STAGE_CATCHING_UP = 1,//正在追赶leader日志
             STAGE_JOINT = 2,
             STAGE_STABLE = 3,
         };
@@ -357,14 +357,16 @@ private:
             }
         }
         int32_t stage() const { return _stage; }
-        void reset(butil::Status* st = NULL);
+        void reset(butil::Status* st = NULL); //_stage = STAGE_NONE;
         bool is_busy() const { return _stage != STAGE_NONE; }
         // Start change configuration.
+        // _stage = STAGE_CATCHING_UP;
         void start(const Configuration& old_conf, 
                    const Configuration& new_conf,
                    Closure * done);
         // Invoked when this node becomes the leader, write a configuration
         // change log as the first log
+        // 如果 old_conf.empty() _stage = STAGE_STABLE; 否则为 _stage = STAGE_JOINT
         void flush(const Configuration& conf,
                    const Configuration& old_conf);
         void next_stage();
@@ -474,7 +476,7 @@ private:
 
     GroupId _group_id;
     VersionedGroupId _v_group_id;
-    PeerId _server_id;
+    PeerId _server_id;//通过构造函数传入的本node ip信息
     NodeOptions _options;
 
     raft_mutex_t _mutex;

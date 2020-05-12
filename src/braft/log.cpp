@@ -101,7 +101,7 @@ int Segment::create() {
 
     std::string path(_path);
     butil::string_appendf(&path, "/" BRAFT_SEGMENT_OPEN_PATTERN, _first_index);
-    _fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
+    _fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);//用open创建log存储文件
     if (_fd >= 0) {
         butil::make_close_on_exec(_fd);
     }
