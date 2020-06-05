@@ -258,7 +258,12 @@ int NodeImpl::init_log_storage() {
     if (_options.log_storage) {
         _log_storage = _options.log_storage;
     } else {
-        _log_storage = LogStorage::create(_options.log_uri);//new SegmentLogStorage()，
+        // log_storage_extension提供了log.h中SegmentLogStorage(local)
+        // 与memory_log.h中的MemoryLogStorage(memory)选择
+        // 具体的log存储方式还是由log_uri提供
+        // 在raft.cpp 的 global_init_or_die_impl提供了可供选择的方式
+        // 一般选择 local方式也就是SegmentLogStorage
+        _log_storage = LogStorage::create(_options.log_uri);
     }
     if (!_log_storage) {
         LOG(ERROR) << "node " << _group_id << ":" << _server_id
@@ -462,6 +467,7 @@ int NodeImpl::init(const NodeOptions& options) {
 
     //在_addr_set中查找对应的ip是否存在, 由NodeManager::add_service添加
     //Return true if |addr| is reachable by a RPC Server
+    // 管理一个进程上的node节点
     if (!global_node_manager->server_exists(_server_id.addr)) {
         LOG(ERROR) << "Group " << _group_id
                    << " No RPC Server attached to " << _server_id.addr
@@ -481,6 +487,7 @@ int NodeImpl::init(const NodeOptions& options) {
     CHECK_EQ(0, _stepdown_timer.init(this, options.election_timeout_ms));
     CHECK_EQ(0, _snapshot_timer.init(this, options.snapshot_interval_s * 1000));
 
+    //用来管理配置，特别是新旧配置之间的问题，详看raft论文
     _config_manager = new ConfigurationManager();
 
     //execution队列绑定的执行函数是execute_applying_tasks
