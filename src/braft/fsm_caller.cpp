@@ -63,10 +63,12 @@ int FSMCaller::run(void* meta, bthread::TaskIterator<ApplyTask>& iter) {
     for (; iter; ++iter) {
         if (iter->type == COMMITTED) {
             if (iter->committed_index > max_committed_index) {
+                //参考raft论文算法，如果 
                 max_committed_index = iter->committed_index;
                 counter++;
             }
         } else {
+            //在这次循环内有 log 被commit了，这里是按批次去 do_committed
             if (max_committed_index >= 0) {
                 caller->_cur_task = COMMITTED;
                 caller->do_committed(max_committed_index);
@@ -199,10 +201,12 @@ void FSMCaller::do_shutdown() {
     }
 }
 
+//如果 commit 这条 log 接下来就是调用 on_apply了
 int FSMCaller::on_committed(int64_t committed_index) {
     ApplyTask t;
     t.type = COMMITTED;
     t.committed_index = committed_index;
+    // 执行 FSMCaller::run
     return bthread::execution_queue_execute(_queue_id, t);
 }
 
@@ -275,6 +279,7 @@ void FSMCaller::do_committed(int64_t committed_index) {
             if (iter_impl.entry()->type == ENTRY_TYPE_CONFIGURATION) {
                 if (iter_impl.entry()->old_peers == NULL) {
                     // Joint stage is not supposed to be noticeable by end users.
+                    //配置文件的修改
                     _fsm->on_configuration_committed(
                             Configuration(*iter_impl.entry()->peers),
                             iter_impl.entry()->id.index);

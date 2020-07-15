@@ -45,9 +45,10 @@ int Ballot::init(const Configuration& conf, const Configuration* old_conf) {
     return 0;
 }
 
+// 用于判断是否有一半以上同步到了log
 Ballot::PosHint Ballot::grant(const PeerId& peer, PosHint hint) {
     std::vector<UnfoundPeerId>::iterator iter;
-    iter = find_peer(peer, _peers, hint.pos0);
+    iter = find_peer(peer, _peers, hint.pos0);//hint.pos0默认为-1
     if (iter != _peers.end()) {
         if (!iter->found) {
             iter->found = true;

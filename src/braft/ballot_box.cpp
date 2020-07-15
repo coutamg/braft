@@ -41,11 +41,13 @@ int BallotBox::init(const BallotBoxOptions &options) {
         LOG(ERROR) << "waiter is NULL";
         return EINVAL;
     }
-    _waiter = options.waiter;
-    _closure_queue = options.closure_queue;
+    _waiter = options.waiter;// node 的 _fsm_caller
+    _closure_queue = options.closure_queue;//node 传入的 _closure_queue
     return 0;
 }
 
+// _send_empty_entries 像follow发送log后clousre会调用_on_rpc_returned 
+// 进而调到commit_at 
 int BallotBox::commit_at(
         int64_t first_log_index, int64_t last_log_index, const PeerId& peer) {
     // FIXME(chenzhangyi01): The cricital section is unacceptable because it 
@@ -57,6 +59,7 @@ int BallotBox::commit_at(
     if (last_log_index < _pending_index) {
         return 0;
     }
+    //发的重复的 log了
     if (last_log_index >= _pending_index + (int64_t)_pending_meta_queue.size()) {
         return ERANGE;
     }
@@ -91,6 +94,8 @@ int BallotBox::commit_at(
     _last_committed_index.store(last_committed_index, butil::memory_order_relaxed);
     lck.unlock();
     // The order doesn't matter
+    // 把commit的index加入都对应的 fsm_caller 中,由此调用到
+    // fsm_caller::do_committed, 
     _waiter->on_committed(last_committed_index);
     return 0;
 }
@@ -121,6 +126,7 @@ int BallotBox::reset_pending_index(int64_t new_pending_index) {
 int BallotBox::append_pending_task(const Configuration& conf, const Configuration* old_conf,
                                    Closure* closure) {
     Ballot bl;
+    // Ballot::init 始终未0
     if (bl.init(conf, old_conf) != 0) {
         CHECK(false) << "Fail to init ballot";
         return -1;

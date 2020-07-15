@@ -66,12 +66,15 @@ TEST(BallotTest, joint_consensus_same_conf) {
     hint = bl.grant(peer1, hint);
     ASSERT_EQ(1, bl._quorum);
     ASSERT_EQ(1, bl._old_quorum);
-    hint = bl.grant(peer4, hint);
+    hint = bl.grant(peer4, hint);// peer4 不在 配置文件中 hint{pos0:-1, pos1:-1}
     ASSERT_EQ(1, bl._quorum);
     ASSERT_EQ(1, bl._old_quorum);
     ASSERT_FALSE(bl.granted());
     hint = bl.grant(peer2, hint);
-    ASSERT_TRUE(bl.granted());
+
+    //这个时候 _quorum 与 _old_quorum 为0 表示过半一致
+    ASSERT_TRUE(bl.granted()); 
+
     hint = bl.grant(peer3, hint);
     ASSERT_EQ(-1, bl._quorum);
     ASSERT_EQ(-1, bl._old_quorum);
@@ -92,12 +95,13 @@ TEST(BallotTest, joint_consensus_different_conf) {
     conf2.add_peer(peer3);
     conf2.add_peer(peer4);
     braft::Ballot bl;
-    ASSERT_EQ(0, bl.init(conf, &conf2));
-    bl.grant(peer1);
-    bl.grant(peer2);
+    // _quorum = 2, _old_quorum = 3
+    ASSERT_EQ(0, bl.init(conf, &conf2)); 
+    bl.grant(peer1); // _quorum = 1, _old_quorum = 2
+    bl.grant(peer2); // _quorum = 0, _old_quorum = 1
     ASSERT_FALSE(bl.granted());
     ASSERT_EQ(0, bl._quorum);
     ASSERT_EQ(1, bl._old_quorum);
-    bl.grant(peer4);
+    bl.grant(peer4); // _quorum = 0, _old_quorum = 0
     ASSERT_TRUE(bl.granted());
 }

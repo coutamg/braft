@@ -365,7 +365,7 @@ void Replicator::_on_rpc_returned(ReplicatorId id, brpc::Controller* cntl,
     std::unique_ptr<AppendEntriesRequest>  req_guard(request);
     std::unique_ptr<AppendEntriesResponse> res_guard(response);
     Replicator *r = NULL;
-    bthread_id_t dummy_id = { id };
+    bthread_id_t dummy_id = { id };//取出follow对应的replica
     const long start_time_us = butil::gettimeofday_us();
     if (bthread_id_lock(dummy_id, (void**)&r) != 0) {
         return;
@@ -449,8 +449,11 @@ void Replicator::_on_rpc_returned(ReplicatorId id, brpc::Controller* cntl,
                        << " last_log_index at peer=" << r->_options.peer_id 
                        << " is " << response->last_log_index();
             // The peer contains less logs than leader
+            // peer 的日志要少于 leader的log
+            // 这里的 _next_index 是通过 _send_empty_entries 到对应
+            // 的follow 上去获取到的
             r->_next_index = response->last_log_index() + 1;
-        } else {  
+        } else {
             // The peer contains logs from old term which should be truncated,
             // decrease _last_log_at_peer by one to test the right index to keep
             if (BAIDU_LIKELY(r->_next_index > 1)) {
@@ -595,7 +598,8 @@ void Replicator::_send_empty_entries(bool is_heartbeat) {
                 butil::monotonic_time_ms());
 
     RaftService_Stub stub(&_sending_channel);
-    //leader向follower发送log
+    // 这里的 entries 并不会填充 data len 同时 cntl 不会携带
+    // leader 的log
     stub.append_entries(cntl.release(), request.release(), 
                         response.release(), done);
     CHECK_EQ(0, bthread_id_unlock(_id)) << "Fail to unlock " << _id;
@@ -641,6 +645,7 @@ int Replicator::_prepare_entry(int offset, EntryMeta* em, butil::IOBuf *data) {
     return 0;
 }
 
+// apend_entry rpc 返回以后调这个
 void Replicator::_send_entries() {
     if (_flying_append_entries_size >= FLAGS_raft_max_entries_size ||
         _append_entries_in_fly.size() >= (size_t)FLAGS_raft_max_parallel_append_entries_rpc_num || //pipeline队列大于并行rpc数量
@@ -665,6 +670,8 @@ void Replicator::_send_entries() {
     int prepare_entry_rc = 0;
     CHECK_GT(max_entries_size, 0);
     for (int i = 0; i < max_entries_size; ++i) {
+        // leader 把 log manage的日志写入Controller中的
+        // _request_attachment 中
         prepare_entry_rc = _prepare_entry(i, &em, &cntl->request_attachment());
         if (prepare_entry_rc != 0) {
             break;

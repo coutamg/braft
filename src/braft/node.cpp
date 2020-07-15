@@ -1908,6 +1908,7 @@ void NodeImpl::apply(LogEntryAndClosure tasks[], size_t size) {
     bool reject_new_user_logs = (_node_readonly || _majority_nodes_readonly);
     if (_state != STATE_LEADER || reject_new_user_logs) {
         butil::Status st;
+        // 只读模式，不让用户写入
         if (_state == STATE_LEADER && reject_new_user_logs) {
             st.set_error(EREADONLY, "readonly mode reject new user logs");
         } else if (_state != STATE_TRANSFERRING) {
@@ -1928,6 +1929,7 @@ void NodeImpl::apply(LogEntryAndClosure tasks[], size_t size) {
     }
     for (size_t i = 0; i < size; ++i) {
         if (tasks[i].expected_term != -1 && tasks[i].expected_term != _current_term) {
+            // 收到的apply 不是当前 term 的日志
             BRAFT_VLOG << "node " << _group_id << ":" << _server_id
                       << " can't apply taks whose expected_term=" << tasks[i].expected_term
                       << " doesn't match current_term=" << _current_term;
@@ -1943,10 +1945,18 @@ void NodeImpl::apply(LogEntryAndClosure tasks[], size_t size) {
         entries.push_back(tasks[i].entry);
         entries.back()->id.term = _current_term;
         entries.back()->type = ENTRY_TYPE_DATA;
+        // _conf.stable() 表示当配置文件修改的时候，需要先把新旧配置
+        // 组成一个配置，等节点状态一致的时候下掉旧的配置
+        // 这里为每一个 follow new 一个 Ballot，作用是用来判断是否有一半
+        // 以上的 follow 同一了这个 log
         _ballot_box->append_pending_task(_conf.conf,
                                          _conf.stable() ? NULL : &_conf.old_conf,
                                          tasks[i].done);
+        // 一个 log entries 有一个对应的 Ballot(在append_pending_task生成)
+        // 当follow 接受这条 log (该follow调用)
     }
+    
+    // 这里把log 写入到了
     _log_manager->append_entries(&entries,
                                new LeaderStableClosure(
                                         NodeId(_group_id, _server_id),
@@ -2309,6 +2319,15 @@ void NodeImpl::handle_append_entries_request(brpc::Controller* cntl,
     const int64_t prev_log_index = request->prev_log_index();
     const int64_t prev_log_term = request->prev_log_term();
     const int64_t local_prev_log_term = _log_manager->get_term(prev_log_index);
+
+    // 这里参考 raft论文中的 日志复制部分
+    // 如果 local_prev_log_term == prev_log_term
+    // 则说明该follow的日志一定和当前leader一样新
+    // 这个时候leader直接发送它的日志就可以了
+    // 如果 local_prev_log_term ！= prev_log_term
+    // 则 leader 与 follow日志不同, leader 则不断
+    // 通过 _send_empty_entries 来找到 follow与leader
+    // 日志相同的地方
     if (local_prev_log_term != prev_log_term) {
         int64_t last_index = _log_manager->last_log_index();
         int64_t saved_term = request->term();
@@ -2351,6 +2370,9 @@ void NodeImpl::handle_append_entries_request(brpc::Controller* cntl,
     }
 
     if (request->entries_size() == 0) {
+        // 对于 leader _send_empty_entries调用时
+        // follower 仅仅只是回复自己当前所处的 term
+        // 以及自己的log index
         response->set_success(true);
         response->set_term(_current_term);
         response->set_last_log_index(_log_manager->last_log_index());

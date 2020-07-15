@@ -25,8 +25,8 @@ class Ballot {
 public:
     struct PosHint {
         PosHint() : pos0(-1), pos1(-1) {}
-        int pos0;
-        int pos1;
+        int pos0;// the peer position in new conf
+        int pos1;// the peer position in old conf
     };
 
     Ballot();
@@ -43,7 +43,10 @@ public:
     void grant(const PeerId& peer);
     bool granted() const { return _quorum <= 0 && _old_quorum <= 0; }
 private:
-    struct UnfoundPeerId {
+    // 一旦 grant 某个 peer 就会把 _peers 中对应的 peer_id 的
+    // found 变为 true 并把 --_quorum, 下次在 grant 这个 peer 时
+    // 不在 --_quorum 了, 对于 _old_peers 也是一样，只不过 --_old_quorum
+    struct UnfoundPeerId { 
         UnfoundPeerId(const PeerId& peer_id) : peer_id(peer_id), found(false) {}
         PeerId peer_id;
         bool found;

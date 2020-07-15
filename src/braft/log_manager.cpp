@@ -410,6 +410,7 @@ void LogManager::append_entries(
         }
         entries->clear();
         done->status().set_error(EIO, "Corrupted LogStorage");
+        // 这里调用FollowerStableClosure::run()
         return run_closure_in_bthread(done);
     }
     std::unique_lock<raft_mutex_t> lck(_mutex);
@@ -438,6 +439,7 @@ void LogManager::append_entries(
     }
 
     done->_entries.swap(*entries);
+    // 调用 disk_thread 
     int ret = bthread::execution_queue_execute(_disk_queue, done);
     CHECK_EQ(0, ret) << "execq execute failed, ret: " << ret << " err: " << berror();
     wakeup_all_waiter(lck);

@@ -97,6 +97,8 @@ private:
     raft_mutex_t                                    _mutex;
     butil::atomic<int64_t>                          _last_committed_index;
     int64_t                                         _pending_index;
+    // 存了每一条 log 对应的 Ballot, leader通过对应的 closure 与 Ballot
+    // 中的peer 来判断是否有超过一半的 peer同意了这条log
     std::deque<Ballot>                              _pending_meta_queue;
 
 };
